@@ -240,11 +240,11 @@ export default function TicketPrint({ data }: { data: TicketData }) {
         {empresa.logoBase64 && (
           <img className="tk-logo" src={empresa.logoBase64} alt="logo" />
         )}
-        <div className="tk-center tk-bold tk-upper" style={{ fontSize: '11pt', marginBottom: '1mm' }}>
-          {empresa.razonSocial}
-        </div>
-        <div className="tk-center" style={{ marginBottom: '0.5mm' }}>
+        <div className="tk-center tk-large tk-upper" style={{ marginBottom: '1mm' }}>
           {empresa.nombreComercial}
+        </div>
+        <div className="tk-center tk-bold tk-upper tk-small" style={{ marginBottom: '0.5mm' }}>
+          {empresa.razonSocial}
         </div>
         <div className="tk-center tk-small">RUC: {empresa.ruc}</div>
         <div className="tk-center tk-small">{empresa.dirMatriz}</div>
