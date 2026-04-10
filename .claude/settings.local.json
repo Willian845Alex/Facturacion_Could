@@ -42,7 +42,10 @@
       "Bash(xargs ls:*)",
       "Bash(grep -E \"\\\\.tsx?$\")",
       "Bash(xargs grep:*)",
-      "Bash('C:/Program Files/Memurai/memurai-cli.exe' HGET bull:sri-queue:__TRACKED_VAR__ name)"
+      "Bash('C:/Program Files/Memurai/memurai-cli.exe' HGET bull:sri-queue:__TRACKED_VAR__ name)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ]
   }
 }
