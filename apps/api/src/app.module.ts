@@ -19,6 +19,22 @@ import { SriModule } from './modules/sri/sri.module';
 import { CashRegisterModule } from './modules/cash-register/cash-register.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 
+async function seedWithRetry(seedFn: () => Promise<void>, retries = 5) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      await seedFn();
+      return;
+    } catch (err) {
+      if (i < retries - 1) {
+        console.log(`Seed falló, reintentando en 3s... (${i + 1}/${retries})`);
+        await new Promise(r => setTimeout(r, 3000));
+      } else {
+        console.error('Seed falló después de varios intentos:', err.message);
+      }
+    }
+  }
+}
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '../../.env' }),
@@ -74,13 +90,13 @@ export class AppModule implements OnApplicationBootstrap {
   ) { }
 
   async onApplicationBootstrap() {
-    await this.usersService.seedAdmin();
-    await this.unitsService.seedDefaults();
-    await this.clientsService.seedConsumidorFinal();
+    await seedWithRetry(() => this.usersService.seedAdmin());
+    await seedWithRetry(() => this.unitsService.seedDefaults());
+    await seedWithRetry(() => this.clientsService.seedConsumidorFinal());
 
     // Seed vendedor demo con la primera sucursal disponible
     const branches = await this.branchesService.findAll();
     const firstBranch = branches.find(b => b.isActive) ?? branches[0] ?? null;
-    await this.usersService.seedVendedorDemo(firstBranch?.id ?? null);
+    await seedWithRetry(() => this.usersService.seedVendedorDemo(firstBranch?.id ?? null));
   }
 }
