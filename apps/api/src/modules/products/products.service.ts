@@ -17,6 +17,7 @@ export class ProductsService {
         where: [
           { name: ILike(`%${search}%`), isActive: true },
           { code: ILike(`%${search}%`), isActive: true },
+          { auxiliaryCode: ILike(`%${search}%`), isActive: true },
         ],
       });
     }

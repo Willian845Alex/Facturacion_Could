@@ -130,8 +130,8 @@ function ProductSearchBar({ onSelect }: { onSelect: (p: Product) => void }) {
   }
 
   return (
-    <div className="space-y-2">
-      <div className="relative">
+    <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+      <div className="relative" style={{ flex: 2 }}>
         <svg className="absolute left-3 top-3 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>
@@ -174,7 +174,7 @@ function ProductSearchBar({ onSelect }: { onSelect: (p: Product) => void }) {
           </div>
         )}
       </div>
-      <div className="relative">
+      <div className="relative" style={{ flex: 1 }}>
         <svg className="absolute left-3 top-3 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 22V12h6v10" />

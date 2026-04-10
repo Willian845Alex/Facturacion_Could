@@ -359,9 +359,6 @@ export class InvoicesService {
     const xmlSinFirma = this.sriXmlService.generarXmlFactura(xmlData);
     const xmlFirmado = await this.javaSignerService.firmarXml(xmlSinFirma);
 
-    console.log('=== XML FIRMADO (primeros 2000 chars) ===');
-    console.log(xmlFirmado.substring(0, 2000));
-    console.log('=========================================');
 
     await this.invoiceRepo.update(invoiceId, { xmlSinFirma, xmlFirmado });
 
@@ -434,9 +431,6 @@ export class InvoicesService {
       throw new Error(`SRI no autorizó después de ${MAX_INTENTOS} intentos. Job será reintentado por Bull.`);
     }
 
-    console.log('=== RESPUESTA AUTORIZACIÓN ===');
-    console.log(JSON.stringify(autorizacion, null, 2));
-    console.log('==============================');
     const auth = autorizacion.autorizaciones?.[0];
 
     if (auth?.estado === 'AUTORIZADO') {
