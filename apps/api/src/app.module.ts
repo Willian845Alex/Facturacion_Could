@@ -35,7 +35,8 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
         migrations: [__dirname + '/database/migrations/*{.ts,.js}'],
         autoLoadEntities: true,
-        synchronize: config.get('NODE_ENV') === 'development',
+        synchronize: config.get('DB_SYNCHRONIZE') === 'true' ||
+          config.get('NODE_ENV') === 'development',
         logging: config.get('NODE_ENV') === 'development',
       }),
     }),
@@ -70,7 +71,7 @@ export class AppModule implements OnApplicationBootstrap {
     private readonly unitsService: UnitsService,
     private readonly clientsService: ClientsService,
     private readonly branchesService: BranchesService,
-  ) {}
+  ) { }
 
   async onApplicationBootstrap() {
     await this.usersService.seedAdmin();
