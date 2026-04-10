@@ -237,7 +237,10 @@ export default function DashboardPage() {
                   tickFormatter={(v) => `$${v}`}
                 />
                 <Tooltip
-                  formatter={(v: number) => [`$${fmt(v)}`, 'Total']}
+                  formatter={(v) => {
+                    if (v === undefined || v === null) return ['$0.00', ''];
+                    return [`$${Number(v).toFixed(2)}`, ''];
+                  }}
                   cursor={{ fill: '#eff6ff' }}
                 />
                 <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} />
