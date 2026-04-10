@@ -4,9 +4,11 @@ import { spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 
-// Resolved at class-load time so it works both in ts-node (src/) and compiled (dist/)
-// From apps/api/src/modules/sri/services/ → 6 levels up = project root
-const JAR_PATH = 'C:\\xampp\\htdocs\\Factura_Sri\\apps\\signer\\target\\signer-1.0.0-jar-with-dependencies.jar';
+// JAR_PATH: configurable via env var; fallback resuelve relativo al archivo compilado.
+// En Docker el JAR queda en /app/signer/signer.jar (copiado por el Dockerfile).
+// En desarrollo apunta a apps/signer/target/ desde la raíz del monorepo.
+const JAR_PATH = process.env.SIGNER_JAR_PATH ||
+  path.resolve(__dirname, '../../../../../signer/signer.jar');
 
 @Injectable()
 export class JavaSignerService {
@@ -37,7 +39,8 @@ export class JavaSignerService {
 
   private invokeJar(stdinPayload: string): Promise<{ success: boolean; signedXml?: string; error?: string }> {
     return new Promise((resolve, reject) => {
-      const child = spawn('C:\\Program Files\\Eclipse Adoptium\\jdk-25.0.2.10-hotspot\\bin\\java.exe', ['-jar', JAR_PATH], {
+      const javaExecutable = process.env.JAVA_EXECUTABLE || 'java';
+      const child = spawn(javaExecutable, ['-jar', JAR_PATH], {
         stdio: ['pipe', 'pipe', 'pipe'],
       });
 
