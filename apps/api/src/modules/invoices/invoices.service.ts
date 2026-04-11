@@ -110,7 +110,9 @@ export class InvoicesService {
   async create(dto: CreateInvoiceDto, userId: string): Promise<Invoice> {
     const client = await this.clientsService.findById(dto.clientId);
     const branch = await this.branchesService.findById(dto.branchId);
-    const fechaEmision = dto.fechaEmision ? new Date(dto.fechaEmision) : new Date();
+    const fechaEmision = dto.fechaEmision
+      ? new Date(dto.fechaEmision + 'T00:00:00-05:00')
+      : new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Guayaquil' }));
 
     let claveAcceso: string | null = null;
     let secuencial: string | null = null;
