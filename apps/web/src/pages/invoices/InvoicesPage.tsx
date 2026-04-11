@@ -1081,7 +1081,14 @@ function SuccessModal({ invoice, isDraft, sriStatus, sriEvent, onClose, onRetry 
             <p className="text-sm text-gray-500 mb-4">
               Factura {invoiceNum(invoice)} · ${Number(invoice.importeTotal).toFixed(2)}
             </p>
-            <p className="text-xs text-gray-400">{elapsed}s — Esto puede tomar hasta 60 segundos</p>
+            <p className="text-xs text-gray-400">
+              {elapsed}s —{' '}
+              {elapsed <= 10
+                ? 'Enviando al SRI...'
+                : elapsed <= 30
+                ? 'El SRI está procesando la factura...'
+                : 'Esto está tardando más de lo normal...'}
+            </p>
           </>
         )}
 
@@ -1592,12 +1599,15 @@ export default function InvoicesPage() {
     pollAbortRef.current = false
     const maxAttempts = 20
     for (let i = 0; i < maxAttempts; i++) {
-      await new Promise(r => setTimeout(r, 3000))
+      await new Promise(r => setTimeout(r, 2000))
       if (pollAbortRef.current) return
       try {
         const res = await invoicesApi.findById(invoiceId)
         const inv = res.data?.data ?? res.data
-        if (inv.status === 'AUTORIZADO') {
+        const status = inv?.status
+        const numeroAutorizacion = inv?.numeroAutorizacion
+        console.log('Polling status:', status, 'invoice:', inv)
+        if (status === 'AUTORIZADO') {
           setSriStatus('authorized')
           setSriEvent({
             event: 'authorized',
@@ -1609,7 +1619,7 @@ export default function InvoicesPage() {
             status: inv.status,
           })
           return
-        } else if (inv.status === 'RECHAZADO') {
+        } else if (status === 'RECHAZADO') {
           setSriStatus('rejected')
           setSriEvent({
             event: 'rejected',
