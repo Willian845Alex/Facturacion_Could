@@ -1613,7 +1613,7 @@ export default function InvoicesPage() {
             event: 'authorized',
             invoiceId,
             secuencial: inv.secuencial ?? '',
-            numeroAutorizacion: inv.numeroAutorizacion ?? '',
+            numeroAutorizacion: numeroAutorizacion ?? '',
             fechaAutorizacion: inv.fechaAutorizacion ?? '',
             importeTotal: Number(inv.importeTotal),
             status: inv.status,
