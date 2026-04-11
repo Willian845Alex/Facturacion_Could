@@ -16,8 +16,6 @@ import { SettingsService } from '../settings/settings.service';
 import { ClientsService } from '../clients/clients.service';
 import { ProductsService } from '../products/products.service';
 import { BranchesService } from '../branches/branches.service';
-import { InventoryService } from '../inventory/inventory.service';
-import { MovementType } from '../inventory/entities/inventory-movement.entity';
 import { CashRegisterService } from '../cash-register/cash-register.service';
 import { InvoiceStatus, DocumentType } from '@facturacion-ec/shared';
 
@@ -39,7 +37,6 @@ export class InvoicesService {
     private readonly clientsService: ClientsService,
     private readonly productsService: ProductsService,
     private readonly branchesService: BranchesService,
-    private readonly inventoryService: InventoryService,
     private readonly cashRegisterService: CashRegisterService,
     private readonly dataSource: DataSource,
   ) { }
@@ -217,27 +214,6 @@ export class InvoicesService {
     const saved = await this.invoiceRepo.save(invoice);
 
     if (!dto.draft) {
-      // Registrar movimientos de inventario (SALIDA_VENTA)
-      for (const itemDto of dto.items) {
-        if (itemDto.productId) {
-          try {
-            const product = await this.productsService.findById(itemDto.productId);
-            if (product.trackInventory) {
-              await this.inventoryService.registrarMovimiento(
-                itemDto.productId,
-                MovementType.SALIDA_VENTA,
-                Number(itemDto.quantity),
-                saved.id,
-                `Venta factura ${secuencial ?? saved.id}`,
-                secuencial ?? saved.id,
-              );
-            }
-          } catch (err) {
-            this.logger.warn(`No se pudo registrar movimiento de inventario para producto ${itemDto.productId}: ${err.message}`);
-          }
-        }
-      }
-
       // Registrar transacción SRI con status PENDIENTE
       await this.sriTxRepo.save(
         this.sriTxRepo.create({

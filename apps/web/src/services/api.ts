@@ -213,9 +213,10 @@ export const reportsApi = {
 
 // ─── WebSocket ─────────────────────────────────────────────────────────────────
 
-export const invoiceSocket = io('http://localhost:3000', {
+export const invoiceSocket = io(window.location.origin, {
   autoConnect: false,
   transports: ['websocket', 'polling'],
+  path: '/socket.io',
 });
 
 export function listenForInvoice(

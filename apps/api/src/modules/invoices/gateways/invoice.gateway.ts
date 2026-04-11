@@ -3,7 +3,11 @@ import { Logger } from '@nestjs/common';
 import { Server } from 'socket.io';
 
 @WebSocketGateway({
-  cors: { origin: '*', credentials: false },
+  cors: {
+    origin: '*',
+    credentials: true,
+  },
+  transports: ['websocket', 'polling'],
 })
 export class InvoiceGateway implements OnGatewayInit {
   @WebSocketServer()

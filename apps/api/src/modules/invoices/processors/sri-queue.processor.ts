@@ -8,6 +8,9 @@ import { CreditNotesService } from '../credit-notes.service';
 import { InvoiceGateway } from '../gateways/invoice.gateway';
 import { SriTransaction, SriTransactionStatus } from '../entities/sri-transaction.entity';
 import { MailerService } from '../services/mailer.service';
+import { ProductsService } from '../../products/products.service';
+import { InventoryService } from '../../inventory/inventory.service';
+import { MovementType } from '../../inventory/entities/inventory-movement.entity';
 import { InvoiceStatus } from '@facturacion-ec/shared';
 
 @Processor('sri-queue')
@@ -19,6 +22,8 @@ export class SriQueueProcessor {
     private readonly creditNotesService: CreditNotesService,
     private readonly invoiceGateway: InvoiceGateway,
     private readonly mailerService: MailerService,
+    private readonly productsService: ProductsService,
+    private readonly inventoryService: InventoryService,
     @InjectRepository(SriTransaction)
     private readonly sriTxRepo: Repository<SriTransaction>,
   ) {}
@@ -78,6 +83,26 @@ export class SriQueueProcessor {
         status: invoice.status,
       });
       this.logger.log(`Factura ${invoiceId} autorizada: ${invoice.numeroAutorizacion}`);
+      // Descontar inventario solo cuando la factura es AUTORIZADA
+      for (const item of invoice.items) {
+        if (item.productId) {
+          try {
+            const product = await this.productsService.findById(item.productId);
+            if (product.trackInventory) {
+              await this.inventoryService.registrarMovimiento(
+                item.productId,
+                MovementType.SALIDA_VENTA,
+                Number(item.quantity),
+                invoice.id,
+                'Venta factura ' + invoice.secuencial,
+                invoice.secuencial ?? invoice.id,
+              );
+            }
+          } catch (err) {
+            this.logger.warn(`No se pudo registrar movimiento de inventario para producto ${item.productId}: ${err.message}`);
+          }
+        }
+      }
       try {
         await this.mailerService.sendInvoiceEmail(invoiceId);
       } catch (mailErr) {
