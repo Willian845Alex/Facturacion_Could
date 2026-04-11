@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { clientsApi, productsApi, branchesApi, invoicesApi, cashRegisterApi, creditNotesApi, openBlob, listenForInvoice, type InvoiceSriEvent } from '../../services/api'
+import { clientsApi, productsApi, branchesApi, invoicesApi, cashRegisterApi, creditNotesApi, openBlob, type InvoiceSriEvent } from '../../services/api'
 import { useAuthStore } from '../../store/auth.store'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -1038,6 +1038,13 @@ function SuccessModal({ invoice, isDraft, sriStatus, sriEvent, onClose, onRetry 
   onClose: () => void
   onRetry: () => void
 }) {
+  const [elapsed, setElapsed] = useState(0)
+  useEffect(() => {
+    if (sriStatus !== 'sending') return
+    setElapsed(0)
+    const t = setInterval(() => setElapsed(s => s + 1), 1000)
+    return () => clearInterval(t)
+  }, [sriStatus])
   if (isDraft) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -1070,11 +1077,11 @@ function SuccessModal({ invoice, isDraft, sriStatus, sriEvent, onClose, onRetry 
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
               </svg>
             </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-1">Enviando al SRI…</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-1">Autorizando con el SRI…</h2>
             <p className="text-sm text-gray-500 mb-4">
               Factura {invoiceNum(invoice)} · ${Number(invoice.importeTotal).toFixed(2)}
             </p>
-            <p className="text-xs text-gray-400">Esto puede tomar unos segundos</p>
+            <p className="text-xs text-gray-400">{elapsed}s — Esto puede tomar hasta 60 segundos</p>
           </>
         )}
 
@@ -1463,6 +1470,7 @@ export default function InvoicesPage() {
   const [sriStatus, setSriStatus] = useState<SriStatus | null>(null)
   const [sriEvent, setSriEvent] = useState<InvoiceSriEvent | null>(null)
   const [error, setError] = useState('')
+  const pollAbortRef = useRef(false)
 
   const queryClient = useQueryClient()
 
@@ -1529,17 +1537,7 @@ export default function InvoicesPage() {
 
       if (!draft) {
         setSriStatus('sending')
-        const unsubscribe = listenForInvoice(
-          inv.id,
-          (data) => { setSriStatus('authorized'); setSriEvent(data) },
-          (data) => { setSriStatus('rejected'); setSriEvent(data) },
-          60000,
-        )
-        // Auto-timeout after 60s
-        setTimeout(() => {
-          setSriStatus(prev => prev === 'sending' ? 'timeout' : prev)
-          unsubscribe()
-        }, 60000)
+        startPolling(inv.id)
       }
     },
     onError: (e: unknown) => {
@@ -1579,6 +1577,7 @@ export default function InvoicesPage() {
   }
 
   const resetForm = () => {
+    pollAbortRef.current = true
     setItems([])
     setClient(null)
     setMontoRecibido('')
@@ -1589,20 +1588,50 @@ export default function InvoicesPage() {
     setError('')
   }
 
+  const startPolling = async (invoiceId: string) => {
+    pollAbortRef.current = false
+    const maxAttempts = 20
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise(r => setTimeout(r, 3000))
+      if (pollAbortRef.current) return
+      try {
+        const res = await invoicesApi.findById(invoiceId)
+        const inv = res.data?.data ?? res.data
+        if (inv.status === 'AUTORIZADO') {
+          setSriStatus('authorized')
+          setSriEvent({
+            event: 'authorized',
+            invoiceId,
+            secuencial: inv.secuencial ?? '',
+            numeroAutorizacion: inv.numeroAutorizacion ?? '',
+            fechaAutorizacion: inv.fechaAutorizacion ?? '',
+            importeTotal: Number(inv.importeTotal),
+            status: inv.status,
+          })
+          return
+        } else if (inv.status === 'RECHAZADO') {
+          setSriStatus('rejected')
+          setSriEvent({
+            event: 'rejected',
+            invoiceId,
+            secuencial: inv.secuencial ?? '',
+            status: inv.status,
+            errors: inv.mensajesRespuesta ?? 'Rechazada por el SRI',
+          })
+          return
+        }
+      } catch {
+        // continue polling on network error
+      }
+    }
+    setSriStatus('timeout')
+  }
+
   const handleRetry = () => {
     if (!successState) return
     setSriStatus('sending')
     setSriEvent(null)
-    const unsubscribe = listenForInvoice(
-      successState.invoice.id,
-      (data) => { setSriStatus('authorized'); setSriEvent(data) },
-      (data) => { setSriStatus('rejected'); setSriEvent(data) },
-      60000,
-    )
-    setTimeout(() => {
-      setSriStatus(prev => prev === 'sending' ? 'timeout' : prev)
-      unsubscribe()
-    }, 60000)
+    startPolling(successState.invoice.id)
   }
 
   return (
