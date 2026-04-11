@@ -1597,16 +1597,17 @@ export default function InvoicesPage() {
 
   const startPolling = async (invoiceId: string) => {
     pollAbortRef.current = false
-    const maxAttempts = 20
+    // 5s inicial (SRI tarda mínimo ese tiempo) + 2s entre intentos → ~60s total
+    const maxAttempts = 28
     for (let i = 0; i < maxAttempts; i++) {
-      await new Promise(r => setTimeout(r, 2000))
+      await new Promise(r => setTimeout(r, i === 0 ? 5000 : 2000))
       if (pollAbortRef.current) return
       try {
         const res = await invoicesApi.findById(invoiceId)
         const inv = res.data?.data ?? res.data
         const status = inv?.status
         const numeroAutorizacion = inv?.numeroAutorizacion
-        console.log('Polling status:', status, 'invoice:', inv)
+        console.log(`[Polling #${i + 1}]`, { status, numeroAutorizacion, inv })
         if (status === 'AUTORIZADO') {
           setSriStatus('authorized')
           setSriEvent({

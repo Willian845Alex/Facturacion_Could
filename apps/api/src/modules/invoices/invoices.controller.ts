@@ -24,7 +24,15 @@ export class InvoicesController {
   findAll(@Query('branchId') branchId?: string) { return this.service.findAll(branchId); }
 
   @Get(':id')
-  findById(@Param('id') id: string) { return this.service.findById(id); }
+  async findById(@Param('id') id: string) {
+    const invoice = await this.service.findById(id);
+    console.log('findById response:', {
+      id: invoice.id,
+      status: invoice.status,
+      numeroAutorizacion: invoice.numeroAutorizacion,
+    });
+    return invoice;
+  }
 
   @Post()
   create(@Body() dto: CreateInvoiceDto, @CurrentUser() user: any) {
