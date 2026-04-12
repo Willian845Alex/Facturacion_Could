@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Param, Body, Query, UseGuards,
+  Controller, Get, Post, Delete, Param, Body, Query, UseGuards,
   Res, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
@@ -21,7 +21,14 @@ export class InvoicesController {
   ) {}
 
   @Get()
-  findAll(@Query('branchId') branchId?: string) { return this.service.findAll(branchId); }
+  findAll(
+    @Query('branchId') branchId?: string,
+    @Query('status') status?: string,
+  ) { return this.service.findAll(branchId, status); }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteDraft(@Param('id') id: string) { return this.service.deleteDraft(id); }
 
   @Get(':id')
   async findById(@Param('id') id: string) {

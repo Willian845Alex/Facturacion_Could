@@ -41,14 +41,27 @@ export class InvoicesService {
     private readonly dataSource: DataSource,
   ) { }
 
-  async findAll(branchId?: string) {
+  async findAll(branchId?: string, status?: string) {
     const query = this.invoiceRepo.createQueryBuilder('inv')
       .leftJoinAndSelect('inv.client', 'client')
       .leftJoinAndSelect('inv.branch', 'branch')
       .leftJoinAndSelect('inv.user', 'user')
       .orderBy('inv.createdAt', 'DESC');
-    if (branchId) query.where('inv.branchId = :branchId', { branchId });
+    if (branchId) query.andWhere('inv.branchId = :branchId', { branchId });
+    if (status) {
+      query.andWhere('inv.status = :status', { status });
+      query.leftJoinAndSelect('inv.items', 'items');
+    }
     return query.getMany();
+  }
+
+  async deleteDraft(id: string) {
+    const inv = await this.invoiceRepo.findOne({ where: { id } });
+    if (!inv) throw new NotFoundException('Factura no encontrada');
+    if (inv.status !== InvoiceStatus.BORRADOR) {
+      throw new BadRequestException('Solo se pueden eliminar borradores');
+    }
+    await this.invoiceRepo.remove(inv);
   }
 
   async findById(id: string) {

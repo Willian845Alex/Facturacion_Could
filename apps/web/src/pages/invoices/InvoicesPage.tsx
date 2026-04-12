@@ -35,6 +35,11 @@ interface CreatedInvoice {
   branch?: { codigoEstablecimiento: string; puntoEmision: string }
   client?: { name: string }
 }
+interface DraftInvoice {
+  id: string; createdAt: string; importeTotal: number; formaPago: string; branchId: string
+  client: { id: string; name: string; identification: string; identificationType?: string; email?: string } | null
+  items: Array<{ productId: string; code: string; description: string; quantity: number; unitPrice: number; discount: number; ivaRate: number }>
+}
 
 // ─── Constants & helpers ────────────────────────────────────────────────────────
 
@@ -1026,6 +1031,136 @@ function HistorialModal({ onClose }: { onClose: () => void }) {
   )
 }
 
+// ─── DraftsModal ────────────────────────────────────────────────────────────────
+
+function DraftsModal({ branchId, onClose, onLoad }: {
+  branchId: string
+  onClose: () => void
+  onLoad: (draft: DraftInvoice) => void
+}) {
+  const todayStr = today()
+  const [loadingId, setLoadingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [err, setErr] = useState('')
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['drafts', branchId],
+    queryFn: () => invoicesApi.findByStatus('BORRADOR', branchId).then(r => {
+      const all = r.data as DraftInvoice[]
+      return all.filter(d => {
+        const ecDate = new Date(new Date(d.createdAt).getTime() - 5 * 60 * 60 * 1000)
+        return ecDate.toISOString().slice(0, 10) === todayStr
+      })
+    }),
+    gcTime: 0,
+  })
+  const drafts: DraftInvoice[] = data ?? []
+
+  const handleLoad = async (draft: DraftInvoice) => {
+    setLoadingId(draft.id)
+    setErr('')
+    try {
+      const res = await invoicesApi.findById(draft.id)
+      const full = res.data?.data ?? res.data
+      await invoicesApi.deleteDraft(draft.id)
+      onLoad(full)
+    } catch {
+      setErr('No se pudo cargar el borrador')
+      setLoadingId(null)
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    setDeletingId(id)
+    setErr('')
+    try {
+      await invoicesApi.deleteDraft(id)
+      refetch()
+    } catch {
+      setErr('No se pudo eliminar el borrador')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[80vh]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">Borradores de hoy</h2>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {drafts.length} {drafts.length === 1 ? 'borrador' : 'borradores'}
+            </p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500 text-xl">×</button>
+        </div>
+
+        {err && (
+          <div className="mx-6 mt-3 px-4 py-2.5 rounded-lg text-sm text-red-800 bg-red-50 border border-red-200">{err}</div>
+        )}
+
+        <div className="flex-1 overflow-auto">
+          {isLoading ? (
+            <p className="p-8 text-sm text-gray-500 text-center">Cargando...</p>
+          ) : drafts.length === 0 ? (
+            <p className="p-8 text-sm text-gray-400 text-center">No hay borradores guardados hoy.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+                <tr>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Hora</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Cliente</th>
+                  <th className="text-center px-4 py-3 font-medium text-gray-600">Items</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-600">Total</th>
+                  <th className="px-4 py-3 w-36"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {drafts.map(draft => (
+                  <tr key={draft.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                      {new Date(draft.createdAt).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Guayaquil' })}
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-gray-900">{draft.client?.name ?? '—'}</p>
+                      <p className="text-xs text-gray-400">{draft.client?.identification}</p>
+                    </td>
+                    <td className="px-4 py-3 text-center text-gray-600">
+                      {draft.items?.length ?? 0}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono font-semibold text-gray-900">
+                      ${Number(draft.importeTotal).toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleLoad(draft)}
+                          disabled={!!loadingId || !!deletingId}
+                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg disabled:opacity-50 transition-colors"
+                        >
+                          {loadingId === draft.id ? 'Cargando…' : 'Cargar'}
+                        </button>
+                        <button
+                          onClick={() => handleDelete(draft.id)}
+                          disabled={!!loadingId || !!deletingId}
+                          className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-medium rounded-lg border border-red-200 disabled:opacity-50 transition-colors"
+                        >
+                          {deletingId === draft.id ? '…' : 'Eliminar'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── SuccessModal ───────────────────────────────────────────────────────────────
 
 type SriStatus = 'sending' | 'authorized' | 'rejected' | 'timeout'
@@ -1472,6 +1607,7 @@ export default function InvoicesPage() {
   const [formaPago, setFormaPago] = useState('01')
   const [montoRecibido, setMontoRecibido] = useState('')
   const [showHistorial, setShowHistorial] = useState(false)
+  const [showDrafts, setShowDrafts] = useState(false)
   const [showCloseCash, setShowCloseCash] = useState(false)
   const [successState, setSuccessState] = useState<{ invoice: CreatedInvoice; isDraft: boolean } | null>(null)
   const [sriStatus, setSriStatus] = useState<SriStatus | null>(null)
@@ -1643,6 +1779,28 @@ export default function InvoicesPage() {
     setSriStatus('sending')
     setSriEvent(null)
     startPolling(successState.invoice.id)
+  }
+
+  const loadDraft = (draft: DraftInvoice) => {
+    setClient(draft.client ? {
+      id: draft.client.id,
+      name: draft.client.name,
+      identification: draft.client.identification,
+      identificationType: draft.client.identificationType,
+      email: draft.client.email,
+    } : null)
+    setFormaPago(draft.formaPago ?? '01')
+    setItems((draft.items as DraftInvoice['items']).map(item => ({
+      _key: newKey(),
+      productId: item.productId ?? undefined,
+      code: item.code,
+      description: item.description,
+      quantity: Number(item.quantity),
+      unitPrice: Number(item.unitPrice),
+      discount: Number(item.discount),
+      ivaRate: Number(item.ivaRate),
+    })))
+    setShowDrafts(false)
   }
 
   return (
@@ -1866,17 +2024,32 @@ export default function InvoicesPage() {
           >
             Guardar borrador
           </button>
-          <button
-            onClick={() => setShowHistorial(true)}
-            className="w-full border-2 border-blue-200 text-blue-600 font-medium py-2.5 rounded-xl text-sm hover:bg-blue-50 transition-colors"
-          >
-            Ver facturas anteriores
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowHistorial(true)}
+              className="flex-1 border-2 border-blue-200 text-blue-600 font-medium py-2.5 rounded-xl text-sm hover:bg-blue-50 transition-colors"
+            >
+              Ver facturas
+            </button>
+            <button
+              onClick={() => setShowDrafts(true)}
+              className="flex-1 border-2 border-gray-200 text-gray-600 font-medium py-2.5 rounded-xl text-sm hover:bg-gray-50 transition-colors"
+            >
+              Borradores
+            </button>
+          </div>
         </div>
       </div>
 
       {/* ─── Modals ─── */}
       {showHistorial && <HistorialModal onClose={() => setShowHistorial(false)} />}
+      {showDrafts && (
+        <DraftsModal
+          branchId={branchId}
+          onClose={() => setShowDrafts(false)}
+          onLoad={loadDraft}
+        />
+      )}
       {successState && (
         <SuccessModal
           invoice={successState.invoice}

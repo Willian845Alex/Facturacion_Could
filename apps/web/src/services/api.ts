@@ -92,8 +92,11 @@ export const authApi = {
 export const invoicesApi = {
   findAll: (branchId?: string) =>
     api.get('/invoices', { params: branchId ? { branchId } : {} }),
+  findByStatus: (status: string, branchId?: string) =>
+    api.get('/invoices', { params: { status, ...(branchId ? { branchId } : {}) } }),
   findById: (id: string) => api.get(`/invoices/${id}`),
   create: (data: unknown) => api.post('/invoices', data),
+  deleteDraft: (id: string) => api.delete(`/invoices/${id}`),
   getRide: (id: string) =>
     api.get(`/invoices/${id}/ride`, { responseType: 'blob' }),
   getXml: (id: string) =>
