@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { inventoryApi, productsApi } from '../../services/api'
+import { inventoryApi, productsApi, openBlob } from '../../services/api'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Product {
@@ -31,13 +31,12 @@ interface Movement {
 type Tab = 'movimientos' | 'kardex'
 
 const TYPE_LABELS: Record<string, string> = {
-  // Tipos específicos
   ENTRADA_COMPRA: 'Entrada compra',
   ENTRADA_AJUSTE: 'Ajuste entrada',
+  ENTRADA_DEVOLUCION: 'Devolución',
   SALIDA_VENTA:   'Salida venta',
   SALIDA_MERMA:   'Merma / pérdida',
   SALIDA_AJUSTE:  'Ajuste salida',
-  // Legados
   ENTRADA: 'Entrada',
   SALIDA:  'Salida',
   AJUSTE:  'Ajuste',
@@ -46,10 +45,10 @@ const TYPE_LABELS: Record<string, string> = {
 const TYPE_COLORS: Record<string, string> = {
   ENTRADA_COMPRA: 'bg-green-100 text-green-700',
   ENTRADA_AJUSTE: 'bg-green-100 text-green-700',
+  ENTRADA_DEVOLUCION: 'bg-green-100 text-green-700',
   SALIDA_VENTA:   'bg-blue-100 text-blue-700',
   SALIDA_MERMA:   'bg-red-100 text-red-700',
   SALIDA_AJUSTE:  'bg-red-100 text-red-700',
-  // Legados
   ENTRADA: 'bg-green-100 text-green-700',
   SALIDA:  'bg-red-100 text-red-700',
   AJUSTE:  'bg-amber-100 text-amber-700',
@@ -64,6 +63,23 @@ function fmtDate(iso: string) {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   })
+}
+
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+function SkeletonRows({ cols, rows = 6 }: { cols: number; rows?: number }) {
+  return (
+    <>
+      {[...Array(rows)].map((_, i) => (
+        <tr key={i} className="animate-pulse">
+          {[...Array(cols)].map((_, j) => (
+            <td key={j} className="px-4 py-3">
+              <div className="h-4 bg-gray-200 rounded w-full" />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
+  )
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -113,19 +129,37 @@ export default function InventoryPage() {
 function MovimientosTab() {
   const queryClient = useQueryClient()
   const [typeFilter, setTypeFilter] = useState<string>('')
+  const [productSearch, setProductSearch] = useState('')
+  const [productId, setProductId] = useState('')
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
   const [showModal, setShowModal] = useState<'entrada' | 'salida' | 'ajuste' | null>(null)
+  const [successMsg, setSuccessMsg] = useState<string | null>(null)
+
+  const params = {
+    ...(typeFilter ? { type: typeFilter } : {}),
+    ...(productId ? { productId } : {}),
+    ...(fromDate ? { from: fromDate } : {}),
+    ...(toDate ? { to: toDate } : {}),
+  }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['inventory-movements', typeFilter],
+    queryKey: ['inventory-movements', params],
     queryFn: () =>
-      inventoryApi.getMovements(typeFilter ? { type: typeFilter } : undefined)
-        .then(r => r.data as Movement[]),
+      inventoryApi.getMovements(params).then(r => r.data as Movement[]),
     gcTime: 0,
   })
 
   const movements = Array.isArray(data) ? data : []
 
-  const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  // Product search for filter
+  const { data: productsData } = useQuery({
+    queryKey: ['products-search-filter', productSearch],
+    queryFn: () => productsApi.findAll({ search: productSearch || undefined, status: 'all' })
+      .then(r => r.data as Product[]),
+    enabled: productSearch.length > 0,
+  })
+  const foundProducts = Array.isArray(productsData) ? productsData : []
 
   const entryMutation = useMutation({
     mutationFn: (dto: unknown) => inventoryApi.createEntry(dto),
@@ -163,6 +197,8 @@ function MovimientosTab() {
     },
   })
 
+  const [showProductDropdown, setShowProductDropdown] = useState(false)
+
   return (
     <div className="space-y-4">
       {/* Éxito */}
@@ -172,64 +208,156 @@ function MovimientosTab() {
         </div>
       )}
 
-      {/* Toolbar */}
-      <div className="flex items-center justify-between gap-3">
-        <select
-          value={typeFilter}
-          onChange={e => setTypeFilter(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Todos los movimientos</option>
-          <option value="ENTRADA_COMPRA">Entradas compra</option>
-          <option value="SALIDA_VENTA">Salidas venta</option>
-          <option value="ENTRADA_AJUSTE">Ajustes entrada</option>
-          <option value="SALIDA_AJUSTE">Ajustes salida</option>
-          <option value="SALIDA_MERMA">Mermas / pérdidas</option>
-        </select>
+      {/* Filtros */}
+      <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+        <div className="flex flex-wrap gap-3 items-end">
+          {/* Tipo de movimiento */}
+          <div className="flex-1 min-w-[180px]">
+            <label className="text-xs font-medium text-gray-500 block mb-1">Tipo de movimiento</label>
+            <select
+              value={typeFilter}
+              onChange={e => setTypeFilter(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Todos</option>
+              <option value="ENTRADA_COMPRA">Entradas compra</option>
+              <option value="ENTRADA_DEVOLUCION">Devoluciones</option>
+              <option value="SALIDA_VENTA">Salidas venta</option>
+              <option value="ENTRADA_AJUSTE">Ajustes entrada</option>
+              <option value="SALIDA_AJUSTE">Ajustes salida</option>
+              <option value="SALIDA_MERMA">Mermas / pérdidas</option>
+            </select>
+          </div>
 
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowModal('entrada')}
-            className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700"
-          >
-            + Registrar entrada
-          </button>
-          <button
-            onClick={() => setShowModal('salida')}
-            className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700"
-          >
-            − Registrar salida
-          </button>
-          <button
-            onClick={() => setShowModal('ajuste')}
-            className="bg-amber-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-600"
-          >
-            ⇄ Ajuste de inventario
-          </button>
+          {/* Producto */}
+          <div className="flex-1 min-w-[220px] relative">
+            <label className="text-xs font-medium text-gray-500 block mb-1">Producto</label>
+            {productId ? (
+              <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 bg-gray-50">
+                <span className="text-sm text-gray-900 flex-1 truncate">{productSearch}</span>
+                <button
+                  type="button"
+                  onClick={() => { setProductId(''); setProductSearch('') }}
+                  className="text-xs text-gray-400 hover:text-gray-600 shrink-0"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <div>
+                <input
+                  type="text"
+                  placeholder="Buscar producto..."
+                  value={productSearch}
+                  onChange={e => { setProductSearch(e.target.value); setShowProductDropdown(true) }}
+                  onFocus={() => setShowProductDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowProductDropdown(false), 200)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {showProductDropdown && productSearch && foundProducts.length > 0 && (
+                  <div className="absolute z-10 top-full left-0 right-0 mt-1 border border-gray-200 rounded-lg bg-white shadow-lg max-h-40 overflow-y-auto">
+                    {foundProducts.map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onMouseDown={() => {
+                          setProductId(p.id)
+                          setProductSearch(p.name)
+                          setShowProductDropdown(false)
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50"
+                      >
+                        <span className="font-medium">{p.name}</span>
+                        <span className="ml-2 text-xs text-gray-400 font-mono">({p.code})</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Fecha desde */}
+          <div>
+            <label className="text-xs font-medium text-gray-500 block mb-1">Desde</label>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={e => setFromDate(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Fecha hasta */}
+          <div>
+            <label className="text-xs font-medium text-gray-500 block mb-1">Hasta</label>
+            <input
+              type="date"
+              value={toDate}
+              onChange={e => setToDate(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Limpiar filtros */}
+          {(typeFilter || productId || fromDate || toDate) && (
+            <button
+              onClick={() => { setTypeFilter(''); setProductId(''); setProductSearch(''); setFromDate(''); setToDate('') }}
+              className="text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-2"
+            >
+              Limpiar
+            </button>
+          )}
         </div>
+      </div>
+
+      {/* Toolbar acciones */}
+      <div className="flex justify-end gap-2">
+        <button
+          onClick={() => setShowModal('entrada')}
+          className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700"
+        >
+          + Registrar entrada
+        </button>
+        <button
+          onClick={() => setShowModal('salida')}
+          className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700"
+        >
+          − Registrar salida
+        </button>
+        <button
+          onClick={() => setShowModal('ajuste')}
+          className="bg-amber-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-600"
+        >
+          ⇄ Ajuste de inventario
+        </button>
       </div>
 
       {/* Tabla */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        {isLoading ? (
-          <p className="p-6 text-sm text-gray-500">Cargando...</p>
-        ) : movements.length === 0 ? (
-          <p className="p-6 text-sm text-gray-500">No hay movimientos registrados.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Fecha</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Producto</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
+              <th className="text-right px-4 py-3 font-medium text-gray-600">Cantidad</th>
+              <th className="text-right px-4 py-3 font-medium text-gray-600">Stock ant.</th>
+              <th className="text-right px-4 py-3 font-medium text-gray-600">Stock nuevo</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Referencia</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {isLoading ? (
+              <SkeletonRows cols={7} />
+            ) : movements.length === 0 ? (
               <tr>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Fecha</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Producto</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
-                <th className="text-right px-4 py-3 font-medium text-gray-600">Cantidad</th>
-                <th className="text-right px-4 py-3 font-medium text-gray-600">Stock ant.</th>
-                <th className="text-right px-4 py-3 font-medium text-gray-600">Stock nuevo</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Referencia</th>
+                <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">
+                  No hay movimientos registrados.
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {movements.map(m => (
+            ) : (
+              movements.map(m => (
                 <tr key={m.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
                     {fmtDate(m.createdAt)}
@@ -256,10 +384,10 @@ function MovimientosTab() {
                     {m.reference ?? m.notes ?? '—'}
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
 
       {/* Modal entrada / salida */}
@@ -288,7 +416,6 @@ function MovimientosTab() {
 }
 
 // ─── Tab 2: Kardex ────────────────────────────────────────────────────────────
-// ─── Tipos para kardex ────────────────────────────────────────────────────────
 interface KardexRow {
   id: string
   date: string
@@ -315,7 +442,6 @@ interface SummaryItem {
 function fmtMoney(n: number) { return n.toFixed(4) }
 function fmtQty(n: number)   { return n % 1 === 0 ? n.toFixed(0) : n.toFixed(2) }
 
-// ─── Tab 2: Kardex ─────────────────────────────────────────────────────────────
 function KardexTab() {
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
 
@@ -328,6 +454,8 @@ function KardexTab() {
 
 // ─── Resumen de todos los productos ──────────────────────────────────────────
 function KardexResumen({ onSelect }: { onSelect: (id: string) => void }) {
+  const [isExporting, setIsExporting] = useState(false)
+
   const { data, isLoading } = useQuery({
     queryKey: ['inventory-summary'],
     queryFn: () => inventoryApi.getSummary().then(r => r.data as SummaryItem[]),
@@ -335,6 +463,18 @@ function KardexResumen({ onSelect }: { onSelect: (id: string) => void }) {
   })
   const items = Array.isArray(data) ? data : []
   const valorTotalGeneral = items.reduce((s, i) => s + i.valorTotal, 0)
+
+  async function handleExport() {
+    setIsExporting(true)
+    try {
+      const response = await inventoryApi.kardexExport()
+      openBlob(response.data as Blob, 'kardex-completo.csv', true)
+    } catch {
+      alert('Error al generar el kardex. Intente de nuevo.')
+    } finally {
+      setIsExporting(false)
+    }
+  }
 
   function stockBadge(item: SummaryItem) {
     if (item.stock === 0)
@@ -348,32 +488,45 @@ function KardexResumen({ onSelect }: { onSelect: (id: string) => void }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-500">{items.length} productos con control de inventario</p>
-        <p className="text-sm text-gray-700 font-medium">
-          Valor total inventario: <span className="text-blue-700">${fmt(valorTotalGeneral)}</span>
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="text-sm text-gray-700 font-medium">
+            Valor total: <span className="text-blue-700">${fmt(valorTotalGeneral)}</span>
+          </p>
+          <button
+            onClick={handleExport}
+            disabled={isExporting}
+            className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2"
+          >
+            {isExporting ? 'Generando...' : '↓ Descargar Kardex completo'}
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        {isLoading ? (
-          <p className="p-6 text-sm text-gray-500">Cargando...</p>
-        ) : items.length === 0 ? (
-          <p className="p-6 text-sm text-gray-500">No hay productos con control de stock.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Código</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Producto</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Unidad</th>
+              <th className="text-right px-4 py-3 font-medium text-gray-600">Stock actual</th>
+              <th className="text-right px-4 py-3 font-medium text-gray-600">Costo promedio</th>
+              <th className="text-right px-4 py-3 font-medium text-gray-600">Valor total</th>
+              <th className="text-right px-4 py-3 font-medium text-gray-600">Stock mín.</th>
+              <th className="text-center px-4 py-3 font-medium text-gray-600">Estado</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {isLoading ? (
+              <SkeletonRows cols={8} />
+            ) : items.length === 0 ? (
               <tr>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Código</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Producto</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Unidad</th>
-                <th className="text-right px-4 py-3 font-medium text-gray-600">Stock actual</th>
-                <th className="text-right px-4 py-3 font-medium text-gray-600">Costo promedio</th>
-                <th className="text-right px-4 py-3 font-medium text-gray-600">Valor total</th>
-                <th className="text-right px-4 py-3 font-medium text-gray-600">Stock mín.</th>
-                <th className="text-center px-4 py-3 font-medium text-gray-600">Estado</th>
+                <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-400">
+                  No hay productos con control de stock.
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {items.map(item => (
+            ) : (
+              items.map(item => (
                 <tr
                   key={item.id}
                   onClick={() => onSelect(item.id)}
@@ -388,8 +541,10 @@ function KardexResumen({ onSelect }: { onSelect: (id: string) => void }) {
                   <td className="px-4 py-3 text-right font-mono text-gray-400">{fmtQty(item.minStock)}</td>
                   <td className="px-4 py-3 text-center">{stockBadge(item)}</td>
                 </tr>
-              ))}
-            </tbody>
+              ))
+            )}
+          </tbody>
+          {!isLoading && items.length > 0 && (
             <tfoot className="border-t-2 border-gray-200 bg-gray-50">
               <tr>
                 <td colSpan={5} className="px-4 py-3 text-sm font-medium text-gray-600 text-right">TOTAL</td>
@@ -397,8 +552,8 @@ function KardexResumen({ onSelect }: { onSelect: (id: string) => void }) {
                 <td colSpan={2} />
               </tr>
             </tfoot>
-          </table>
-        )}
+          )}
+        </table>
       </div>
       <p className="text-xs text-gray-400 text-center">Haz clic en un producto para ver su kardex detallado</p>
     </div>
@@ -436,7 +591,25 @@ function KardexDetallado({ productId, onBack }: { productId: string; onBack: () 
     }, { once: true })
   }
 
-  if (isLoading) return <div className="py-12 text-center text-sm text-gray-500">Cargando kardex...</div>
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <button onClick={onBack} className="text-sm text-blue-600 hover:underline">← Volver al resumen</button>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-lg p-6">
+          <div className="animate-pulse space-y-4">
+            <div className="h-6 bg-gray-200 rounded w-1/3 mx-auto" />
+            <div className="h-4 bg-gray-200 rounded w-1/4 mx-auto" />
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className="h-8 bg-gray-100 rounded" />
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (!data) return <div className="py-12 text-center text-sm text-gray-400">Sin datos</div>
 
   const { product, empresa, saldoInicial, rows, totals } = data
@@ -505,7 +678,6 @@ function KardexDetallado({ productId, onBack }: { productId: string; onBack: () 
         <div className="overflow-x-auto">
           <table className="w-full text-xs border-collapse">
             <thead>
-              {/* Grupos */}
               <tr className="bg-gray-800 text-white">
                 <th rowSpan={2} className="border border-gray-600 px-2 py-2 text-left">Fecha</th>
                 <th rowSpan={2} className="border border-gray-600 px-2 py-2 text-left">Detalle</th>
@@ -558,7 +730,6 @@ function KardexDetallado({ productId, onBack }: { productId: string; onBack: () 
                     </td>
                     <td className="border border-gray-200 px-2 py-1.5 text-gray-700">{r.detail}</td>
                     <td className="border border-gray-200 px-2 py-1.5 text-gray-500 max-w-[100px] truncate">{r.document || '—'}</td>
-                    {/* Entradas */}
                     <td className="border border-gray-200 px-2 py-1.5 text-right font-mono text-green-700">
                       {r.entrada ? fmtQty(r.entrada.qty) : ''}
                     </td>
@@ -568,7 +739,6 @@ function KardexDetallado({ productId, onBack }: { productId: string; onBack: () 
                     <td className="border border-gray-200 px-2 py-1.5 text-right font-mono text-green-700">
                       {r.entrada ? fmt(r.entrada.total) : ''}
                     </td>
-                    {/* Salidas */}
                     <td className="border border-gray-200 px-2 py-1.5 text-right font-mono text-red-700">
                       {r.salida ? fmtQty(r.salida.qty) : ''}
                     </td>
@@ -578,7 +748,6 @@ function KardexDetallado({ productId, onBack }: { productId: string; onBack: () 
                     <td className="border border-gray-200 px-2 py-1.5 text-right font-mono text-red-700">
                       {r.salida ? fmt(r.salida.total) : ''}
                     </td>
-                    {/* Saldo */}
                     <td className="border border-gray-200 px-2 py-1.5 text-right font-mono font-medium">{fmtQty(r.saldo.qty)}</td>
                     <td className="border border-gray-200 px-2 py-1.5 text-right font-mono">{fmtMoney(r.saldo.promedio)}</td>
                     <td className="border border-gray-200 px-2 py-1.5 text-right font-mono font-medium">{fmt(r.saldo.total)}</td>
@@ -603,7 +772,6 @@ function KardexDetallado({ productId, onBack }: { productId: string; onBack: () 
           </table>
         </div>
 
-        {/* Pie */}
         <p className="text-xs text-gray-400 text-center pt-2">
           Generado: {new Date().toLocaleString('es-EC')} — Método: Promedio Ponderado
         </p>
@@ -629,7 +797,7 @@ function MovementForm({
 
   const { data: productsData } = useQuery({
     queryKey: ['products', search],
-    queryFn: () => productsApi.findAll(search || undefined).then(r => r.data as Product[]),
+    queryFn: () => productsApi.findAll({ search: search || undefined }).then(r => r.data as Product[]),
   })
   const products = Array.isArray(productsData)
     ? productsData.filter(p => p.trackInventory && p.isActive)
@@ -830,7 +998,7 @@ function AdjustmentForm({
 
   const { data: productsData } = useQuery({
     queryKey: ['products', search],
-    queryFn: () => productsApi.findAll(search || undefined).then(r => r.data as Product[]),
+    queryFn: () => productsApi.findAll({ search: search || undefined }).then(r => r.data as Product[]),
   })
   const products = Array.isArray(productsData)
     ? productsData.filter(p => p.trackInventory && p.isActive)

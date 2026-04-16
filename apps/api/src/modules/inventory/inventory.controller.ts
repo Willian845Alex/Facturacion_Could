@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Body, Query, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Param, UseGuards, Res } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
+import { Response } from 'express';
 import { InventoryService } from './inventory.service';
 import { MovementType } from './entities/inventory-movement.entity';
 
@@ -28,8 +29,10 @@ export class InventoryController {
   getMovements(
     @Query('productId') productId?: string,
     @Query('type') type?: MovementType,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
-    return this.service.getMovements(productId, type);
+    return this.service.getMovements(productId, type, from, to);
   }
 
   @Post('movements/entry')
@@ -51,6 +54,16 @@ export class InventoryController {
   @Post('movements/adjustment')
   createAdjustment(@Body() body: { productId: string; newStock: number; motive: string }) {
     return this.service.registrarAjuste(body.productId, body.newStock, body.motive);
+  }
+
+  // IMPORTANT: this route must be declared BEFORE /kardex/:productId
+  @Get('kardex/export')
+  async exportKardex(@Res() res: Response) {
+    const csv = await this.service.getKardexExport();
+    const bom = '\ufeff'; // UTF-8 BOM for Excel compatibility
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="kardex-completo.csv"');
+    res.send(bom + csv);
   }
 
   @Get('kardex/:productId')

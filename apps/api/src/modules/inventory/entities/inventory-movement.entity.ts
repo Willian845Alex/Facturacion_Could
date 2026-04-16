@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { Product } from '../../products/entities/product.entity';
 
 export enum MovementType {
@@ -20,6 +20,7 @@ export class InventoryMovement {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Index()
   @Column()
   productId: string;
 
@@ -27,6 +28,7 @@ export class InventoryMovement {
   @JoinColumn({ name: 'productId' })
   product: Product;
 
+  @Index()
   @Column({ type: 'enum', enum: MovementType })
   type: MovementType;
 
@@ -51,6 +53,7 @@ export class InventoryMovement {
   @Column({ nullable: true })
   notes: string;
 
+  @Index()
   @CreateDateColumn()
   createdAt: Date;
 }

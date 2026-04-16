@@ -1,8 +1,17 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, ILike } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Product } from './entities/product.entity';
 import { CreateProductDto } from './dto/create-product.dto';
+
+export interface ProductFilters {
+  search?: string;
+  status?: 'all' | 'active' | 'inactive';
+  ivaRate?: number;
+  stockFilter?: 'all' | 'low' | 'out';
+  page?: number;
+  limit?: number;
+}
 
 @Injectable()
 export class ProductsService {
@@ -11,17 +20,41 @@ export class ProductsService {
     private readonly repo: Repository<Product>,
   ) {}
 
-  findAll(search?: string) {
-    if (search) {
-      return this.repo.find({
-        where: [
-          { name: ILike(`%${search}%`), isActive: true },
-          { code: ILike(`%${search}%`), isActive: true },
-          { auxiliaryCode: ILike(`%${search}%`), isActive: true },
-        ],
-      });
+  findAll(filters: ProductFilters | string = {}) {
+    // Backward-compat: accept plain string search as before
+    if (typeof filters === 'string') {
+      filters = { search: filters };
     }
-    return this.repo.find({ where: { isActive: true } });
+    const { search, status = 'active', ivaRate, stockFilter, page = 1, limit = 500 } = filters;
+
+    const qb = this.repo.createQueryBuilder('p');
+
+    if (status !== 'all') {
+      qb.andWhere('p.isActive = :isActive', { isActive: status !== 'inactive' });
+    }
+
+    if (search) {
+      qb.andWhere(
+        '(p.name ILIKE :s OR p.code ILIKE :s OR p.auxiliaryCode ILIKE :s)',
+        { s: `%${search}%` },
+      );
+    }
+
+    if (ivaRate !== undefined) {
+      qb.andWhere('p.ivaRate = :ivaRate', { ivaRate });
+    }
+
+    if (stockFilter === 'out') {
+      qb.andWhere('p.trackInventory = true AND p.stock = 0');
+    } else if (stockFilter === 'low') {
+      qb.andWhere('p.trackInventory = true AND p.stock > 0 AND p.stock <= p.minStock');
+    }
+
+    qb.orderBy('p.name', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    return qb.getMany();
   }
 
   async findById(id: string) {

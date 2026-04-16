@@ -24,15 +24,38 @@ const TAX_LABELS: Record<number, string> = {
   8: 'IVA 8%',
 }
 
+// ─── Skeleton row ─────────────────────────────────────────────────────────────
+function SkeletonRow() {
+  return (
+    <tr className="animate-pulse">
+      {[...Array(8)].map((_, i) => (
+        <td key={i} className="px-4 py-3">
+          <div className="h-4 bg-gray-200 rounded w-full" />
+        </td>
+      ))}
+    </tr>
+  )
+}
+
 export default function ProductsPage() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('active')
+  const [ivaFilter, setIvaFilter] = useState('')
+  const [stockFilter, setStockFilter] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
 
+  const params = {
+    ...(search ? { search } : {}),
+    status: statusFilter || 'active',
+    ...(ivaFilter ? { ivaRate: ivaFilter } : {}),
+    ...(stockFilter ? { stockFilter } : {}),
+  }
+
   const { data, isLoading } = useQuery({
-    queryKey: ['products', search],
-    queryFn: () => productsApi.findAll(search || undefined).then(r => r.data),
+    queryKey: ['products', params],
+    queryFn: () => productsApi.findAll(params).then(r => r.data),
     gcTime: 0,
   })
 
@@ -73,39 +96,86 @@ export default function ProductsPage() {
         </button>
       </div>
 
-      {/* Buscador */}
-      <input
-        type="text"
-        placeholder="Buscar por nombre o código..."
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        className="w-full border border-gray-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-      />
+      {/* Filtros */}
+      <div className="flex flex-wrap gap-3">
+        {/* Búsqueda */}
+        <input
+          type="text"
+          placeholder="Buscar por nombre, código o barras..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="flex-1 min-w-[200px] border border-gray-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+
+        {/* Estado */}
+        <select
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value)}
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="all">Todos</option>
+          <option value="active">Activos</option>
+          <option value="inactive">Inactivos</option>
+        </select>
+
+        {/* IVA */}
+        <select
+          value={ivaFilter}
+          onChange={e => setIvaFilter(e.target.value)}
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">Todos los IVA</option>
+          <option value="0">IVA 0%</option>
+          <option value="15">IVA 15%</option>
+          <option value="5">IVA 5%</option>
+          <option value="8">IVA 8%</option>
+        </select>
+
+        {/* Stock */}
+        <select
+          value={stockFilter}
+          onChange={e => setStockFilter(e.target.value)}
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">Todo stock</option>
+          <option value="low">Stock bajo</option>
+          <option value="out">Agotados</option>
+        </select>
+      </div>
 
       {/* Tabla */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        {isLoading ? (
-          <p className="p-6 text-sm text-gray-500">Cargando...</p>
-        ) : products.length === 0 ? (
-          <p className="p-6 text-sm text-gray-500">No hay productos registrados.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Código</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Nombre</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Precio</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">IVA</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Stock</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Estado</th>
+              <th className="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {isLoading ? (
+              [...Array(8)].map((_, i) => <SkeletonRow key={i} />)
+            ) : products.length === 0 ? (
               <tr>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Código</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Nombre</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Precio</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">IVA</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Stock</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Estado</th>
-                <th className="px-4 py-3"></th>
+                <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-400">
+                  No hay productos que coincidan con los filtros.
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {products.map(p => (
+            ) : (
+              products.map(p => (
                 <tr key={p.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-mono text-gray-500">{p.code}</td>
+                  <td className="px-4 py-3 font-mono text-gray-500">
+                    <div>{p.code}</div>
+                    {p.auxiliaryCode && (
+                      <div className="text-xs text-gray-400">{p.auxiliaryCode}</div>
+                    )}
+                  </td>
                   <td className="px-4 py-3 font-medium text-gray-900">{p.name}</td>
                   <td className="px-4 py-3 text-gray-900">
                     ${Number(p.price).toFixed(2)}
@@ -115,9 +185,11 @@ export default function ProductsPage() {
                   </td>
                   <td className="px-4 py-3">
                     {p.trackInventory ? (
-                      <span className={Number(p.stock) <= Number(p.minStock)
+                      <span className={Number(p.stock) <= 0
                         ? 'text-red-600 font-medium'
-                        : 'text-gray-900'
+                        : Number(p.stock) <= Number(p.minStock)
+                          ? 'text-amber-600 font-medium'
+                          : 'text-gray-900'
                       }>
                         {Number(p.stock).toFixed(0)} {p.unit ?? ''}
                       </span>
@@ -150,10 +222,10 @@ export default function ProductsPage() {
                     </button>
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
 
       {/* Modal */}

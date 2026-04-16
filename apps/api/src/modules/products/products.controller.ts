@@ -12,7 +12,23 @@ export class ProductsController {
   constructor(private readonly service: ProductsService) {}
 
   @Get()
-  findAll(@Query('search') search?: string) { return this.service.findAll(search); }
+  findAll(
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('ivaRate') ivaRate?: string,
+    @Query('stockFilter') stockFilter?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.service.findAll({
+      search,
+      status: (status as 'all' | 'active' | 'inactive') || 'active',
+      ivaRate: ivaRate !== undefined && ivaRate !== '' ? Number(ivaRate) : undefined,
+      stockFilter: stockFilter as 'all' | 'low' | 'out' | undefined,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
+  }
 
   @Get(':id')
   findById(@Param('id') id: string) { return this.service.findById(id); }

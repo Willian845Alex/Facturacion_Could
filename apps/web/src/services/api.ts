@@ -115,8 +115,8 @@ export const clientsApi = {
 };
 
 export const productsApi = {
-  findAll: (search?: string) =>
-    api.get('/products', { params: search ? { search } : {} }),
+  findAll: (params?: { search?: string; status?: string; ivaRate?: string; stockFilter?: string }) =>
+    api.get('/products', { params }),
   findById: (id: string) => api.get(`/products/${id}`),
   create: (data: unknown) => api.post('/products', data),
   update: (id: string, data: unknown) => api.patch(`/products/${id}`, data),
@@ -150,7 +150,7 @@ export const unitsApi = {
 };
 
 export const inventoryApi = {
-  getMovements: (params?: { type?: string; productId?: string }) =>
+  getMovements: (params?: { type?: string; productId?: string; from?: string; to?: string }) =>
     api.get('/inventory/movements', { params }),
   createEntry: (data: unknown) => api.post('/inventory/movements/entry', data),
   createExit: (data: unknown) => api.post('/inventory/movements/exit', data),
@@ -159,6 +159,8 @@ export const inventoryApi = {
   createAdjustment: (data: unknown) =>
     api.post('/inventory/movements/adjustment', data),
   getSummary: () => api.get('/inventory/summary'),
+  kardexExport: () =>
+    api.get('/inventory/kardex/export', { responseType: 'blob' }),
 };
 
 export const cashRegisterApi = {

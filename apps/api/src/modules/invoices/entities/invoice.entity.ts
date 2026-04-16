@@ -17,15 +17,18 @@ export class Invoice {
   @Column({ type: 'varchar', length: 49, nullable: true })
   claveAcceso: string | null;
 
+  @Index()
   @Column({ type: 'varchar', length: 9, nullable: true })
   secuencial: string | null;
 
   @Column({ type: 'enum', enum: DocumentType, default: DocumentType.FACTURA })
   documentType: DocumentType;
 
+  @Index()
   @Column({ type: 'enum', enum: InvoiceStatus, default: InvoiceStatus.BORRADOR })
   status: InvoiceStatus;
 
+  @Index()
   @Column({ type: 'timestamptz' })
   fechaEmision: Date;
 
@@ -92,6 +95,7 @@ export class Invoice {
   @Column({ default: '01' })
   formaPago: string; // 01=SIN UTILIZACION DEL SISTEMA FINANCIERO (efectivo)
 
+  @Index()
   @CreateDateColumn()
   createdAt: Date;
 

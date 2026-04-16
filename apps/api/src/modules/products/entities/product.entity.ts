@@ -10,9 +10,11 @@ export class Product {
   @Column()
   code: string;
 
+  @Index()
   @Column({ nullable: true })
   auxiliaryCode: string;
 
+  @Index()
   @Column()
   name: string;
 
@@ -46,6 +48,7 @@ export class Product {
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   minStock: number;
 
+  @Index()
   @Column({ default: true })
   isActive: boolean;
 

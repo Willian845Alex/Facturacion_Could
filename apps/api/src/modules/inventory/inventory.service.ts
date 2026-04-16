@@ -80,13 +80,46 @@ export class InventoryService {
     return this.registrarMovimiento(productId, type, Math.abs(delta), undefined, motive, motive);
   }
 
-  getMovements(productId?: string, type?: MovementType) {
+  getMovements(productId?: string, type?: MovementType, from?: string, to?: string) {
     const query = this.repo.createQueryBuilder('m')
       .leftJoinAndSelect('m.product', 'product')
       .orderBy('m.createdAt', 'DESC');
     if (productId) query.andWhere('m.productId = :productId', { productId });
     if (type) query.andWhere('m.type = :type', { type });
+    if (from) query.andWhere('m.createdAt >= :from', { from: new Date(from) });
+    if (to) query.andWhere('m.createdAt <= :to', { to: new Date(to + 'T23:59:59') });
     return query.getMany();
+  }
+
+  async getKardexExport(): Promise<string> {
+    const movements = await this.repo.createQueryBuilder('m')
+      .leftJoinAndSelect('m.product', 'product')
+      .orderBy('m.createdAt', 'ASC')
+      .getMany();
+
+    const header = ['Fecha', 'Producto', 'Código', 'Tipo movimiento', 'Cantidad',
+      'Costo unitario', 'Costo total', 'Stock resultante', 'Referencia', 'Notas'].join(';');
+
+    const rows = movements.map(m => {
+      const unitCost = m.unitCost ? Number(m.unitCost) : 0;
+      const qty = Number(m.quantity);
+      const total = unitCost * qty;
+      const escape = (s: string) => `"${(s ?? '').replace(/"/g, '""')}"`;
+      return [
+        new Date(m.createdAt).toLocaleString('es-EC', { timeZone: 'America/Guayaquil' }),
+        escape(m.product?.name ?? ''),
+        m.product?.code ?? '',
+        MOVEMENT_DETAIL[m.type] ?? m.type,
+        qty.toFixed(2),
+        unitCost.toFixed(4),
+        total.toFixed(2),
+        Number(m.stockAfter).toFixed(2),
+        escape(m.reference ?? ''),
+        escape(m.notes ?? ''),
+      ].join(';');
+    });
+
+    return [header, ...rows].join('\n');
   }
 
   // ─── Promedio ponderado ──────────────────────────────────────────────────────
