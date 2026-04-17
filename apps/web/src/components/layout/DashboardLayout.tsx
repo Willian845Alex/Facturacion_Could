@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
-import { authApi } from '../../services/api';
+import { authApi, settingsApi } from '../../services/api';
 import { UserRole } from '@facturacion-ec/shared';
 
 interface NavItem {
@@ -85,6 +86,14 @@ export default function DashboardLayout() {
 
   const isAdmin = user?.role === UserRole.ADMIN;
 
+  const { data: settingsData } = useQuery({
+    queryKey: ['settings-brand'],
+    queryFn: () => settingsApi.get().then(r => r.data as { nombreComercial?: string; logoBase64?: string }),
+    staleTime: 5 * 60 * 1000,
+  });
+  const nombreComercial = settingsData?.nombreComercial || 'Mi Empresa';
+  const logoBase64 = settingsData?.logoBase64 || null;
+
   // Track open submenus
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({
     '/reports': pathname.startsWith('/reports'),
@@ -112,14 +121,22 @@ export default function DashboardLayout() {
         {/* Brand */}
         <div className="px-5 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0">
-              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm font-bold text-gray-900 leading-none">Facturación EC</p>
+            {logoBase64 ? (
+              <img
+                src={logoBase64.startsWith('data:') ? logoBase64 : `data:image/png;base64,${logoBase64}`}
+                alt="Logo"
+                className="w-8 h-8 rounded-lg object-contain shrink-0 bg-gray-50 border border-gray-100"
+              />
+            ) : (
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0">
+                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+            )}
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-gray-900 leading-none truncate">{nombreComercial}</p>
               <p className="text-xs text-gray-400 mt-0.5">SRI Ecuador</p>
             </div>
           </div>
