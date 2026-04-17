@@ -210,6 +210,25 @@ export const dashboardApi = {
 };
 
 export const reportsApi = {
+  // Sales
+  getSales: (params: { from: string; to: string; branchId?: string; userId?: string }) =>
+    api.get('/reports/sales', { params }),
+  exportSales: (params: { from: string; to: string; branchId?: string; userId?: string }) =>
+    api.get('/reports/sales/export', { params, responseType: 'blob' }),
+  // ATS
+  getAtsPreview: (params: { year: number; month: number }) =>
+    api.get('/reports/ats/preview', { params }),
+  downloadAts: (params: { year: number; month: number }) =>
+    api.get('/reports/ats', { params, responseType: 'blob' }),
+  // Inventory
+  getInventory: () => api.get('/reports/inventory'),
+  exportInventory: () => api.get('/reports/inventory/export', { responseType: 'blob' }),
+  // Kardex
+  getKardex: (params?: { productId?: string; from?: string; to?: string }) =>
+    api.get('/reports/kardex', { params }),
+  exportKardex: (params?: { productId?: string; from?: string; to?: string }) =>
+    api.get('/reports/kardex/export', { params, responseType: 'blob' }),
+  // Legacy
   ventas: (desde: string, hasta: string, branchId?: string) =>
     api.get('/reports/ventas', { params: { desde, hasta, branchId } }),
   anexoTransaccional: (anio: number, mes: number, branchId?: string) =>

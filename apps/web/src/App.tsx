@@ -9,7 +9,10 @@ import TicketPage from './pages/invoices/TicketPage';
 import ClientsPage from './pages/clients/ClientsPage';
 import ProductsPage from './pages/products/ProductsPage';
 import SettingsPage from './pages/settings/SettingsPage';
-import ReportsPage from './pages/reports/ReportsPage';
+import ReportsPage from './pages/reports/ReportsPage'
+import SalesReportPage from './pages/reports/SalesReportPage'
+import AtsReportPage from './pages/reports/AtsReportPage'
+import InventoryReportPage from './pages/reports/InventoryReportPage';
 import InventoryPage from './pages/inventory/InventoryPage';
 import CashRegisterHistoryPage from './pages/cash-register/CashRegisterHistoryPage';
 import UsersPage from './pages/users/UsersPage';
@@ -66,7 +69,12 @@ export default function App() {
         <Route path="products" element={<ProductsPage />} />
         <Route path="inventory" element={<InventoryPage />} />
         <Route path="cash-register" element={<CashRegisterHistoryPage />} />
-        <Route path="reports" element={<AdminRoute><ReportsPage /></AdminRoute>} />
+        <Route path="reports" element={<AdminRoute><ReportsPage /></AdminRoute>}>
+          <Route index element={<Navigate to="/reports/sales" replace />} />
+          <Route path="sales" element={<SalesReportPage />} />
+          <Route path="ats" element={<AtsReportPage />} />
+          <Route path="inventory" element={<InventoryReportPage />} />
+        </Route>
         <Route path="settings" element={<AdminRoute><SettingsPage /></AdminRoute>} />
         <Route path="users" element={<AdminRoute><UsersPage /></AdminRoute>} />
       </Route>
