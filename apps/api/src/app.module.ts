@@ -53,6 +53,8 @@ async function seedWithRetry(seedFn: () => Promise<void>, retries = 5) {
         autoLoadEntities: true,
         synchronize: config.get('DB_SYNCHRONIZE') === 'true' ||
           config.get('NODE_ENV') === 'development',
+        migrationsRun: config.get('NODE_ENV') !== 'development' &&
+          config.get('DB_SYNCHRONIZE') !== 'true',
         logging: config.get('NODE_ENV') === 'development',
       }),
     }),
