@@ -106,7 +106,7 @@ function ProductSearchBar({ onSelect }: { onSelect: (p: Product) => void }) {
 
   const { data } = useQuery({
     queryKey: ['prod-search', q],
-    queryFn: () => productsApi.findAll(q).then(r => r.data as Product[]),
+    queryFn: () => productsApi.findAll({ search: q }).then(r => r.data as Product[]),
     enabled: q.length >= 1,
     staleTime: 5000,
   })
@@ -122,7 +122,7 @@ function ProductSearchBar({ onSelect }: { onSelect: (p: Product) => void }) {
   const handleBarcode = async (code: string) => {
     if (!code.trim()) return
     try {
-      const res = await productsApi.findAll(code.trim())
+      const res = await productsApi.findAll({ search: code.trim() })
       const list = (res.data as Product[]).filter(p => p.isActive)
       if (list.length === 1) {
         onSelect(list[0])
