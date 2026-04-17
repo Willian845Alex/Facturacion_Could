@@ -211,7 +211,10 @@ export default function SalesReportPage() {
               <XAxis dataKey="label" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `$${v}`} />
               <Tooltip
-                formatter={(v: number) => [`$${fmt(v)}`, 'Total']}
+                formatter={(v) => {
+                  if (v === undefined || v === null) return ['$0.00', ''];
+                  return [`$${Number(v).toFixed(2)}`, ''];
+                }}
                 labelStyle={{ fontSize: 12 }}
               />
               <Bar dataKey="total" fill="#2563eb" radius={[3, 3, 0, 0]} />

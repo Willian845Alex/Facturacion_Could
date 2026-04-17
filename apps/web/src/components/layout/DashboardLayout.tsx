@@ -147,7 +147,7 @@ export default function DashboardLayout() {
                         : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                     }`}
                   >
-                    <NavIcon d={item.icon} active={isParentActive} />
+                    <NavIcon d={item.icon} active={isParentActive ?? false} />
                     <span className="flex-1 text-left">{item.label}</span>
                     <svg
                       className={`w-3.5 h-3.5 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
