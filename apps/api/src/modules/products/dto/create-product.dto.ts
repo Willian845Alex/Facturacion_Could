@@ -4,7 +4,8 @@ import { IvaRate, TaxType } from '@facturacion-ec/shared';
 
 export class CreateProductDto {
   @IsString()
-  code: string;
+  @IsOptional()
+  code?: string;
 
   @IsString()
   @IsOptional()

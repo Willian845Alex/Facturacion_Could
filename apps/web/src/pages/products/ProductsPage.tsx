@@ -287,7 +287,7 @@ function ProductForm({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     onSubmit({
-      code: form.mainCode,
+      ...(form.mainCode ? { code: form.mainCode } : {}),
       auxiliaryCode: form.auxiliaryCode || undefined,
       name: form.name,
       price: Number(form.price),
@@ -313,14 +313,13 @@ function ProductForm({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-gray-600">
-                Código principal <span className="text-red-500">*</span>
+                Código principal
               </label>
               <input
-                required
+                readOnly
                 value={form.mainCode}
-                onChange={e => set('mainCode', e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"
-                placeholder="PROD-001"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1 bg-gray-50 text-gray-500 cursor-not-allowed"
+                placeholder={initial ? '' : 'Se generará automáticamente'}
               />
             </div>
             <div>

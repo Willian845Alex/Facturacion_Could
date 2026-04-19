@@ -80,11 +80,17 @@ export class InventoryService {
     return this.registrarMovimiento(productId, type, Math.abs(delta), undefined, motive, motive);
   }
 
-  getMovements(productId?: string, type?: MovementType, from?: string, to?: string) {
+  getMovements(productId?: string, type?: MovementType, from?: string, to?: string, search?: string) {
     const query = this.repo.createQueryBuilder('m')
       .leftJoinAndSelect('m.product', 'product')
       .orderBy('m.createdAt', 'DESC');
     if (productId) query.andWhere('m.productId = :productId', { productId });
+    if (search) {
+      query.andWhere(
+        '(product.name ILIKE :search OR product.code ILIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
     if (type) query.andWhere('m.type = :type', { type });
     if (from) query.andWhere('m.createdAt >= :from', { from: new Date(from) });
     if (to) query.andWhere('m.createdAt <= :to', { to: new Date(to + 'T23:59:59') });

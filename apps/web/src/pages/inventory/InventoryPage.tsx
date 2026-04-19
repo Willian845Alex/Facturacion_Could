@@ -130,7 +130,6 @@ function MovimientosTab() {
   const queryClient = useQueryClient()
   const [typeFilter, setTypeFilter] = useState<string>('')
   const [productSearch, setProductSearch] = useState('')
-  const [productId, setProductId] = useState('')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [showModal, setShowModal] = useState<'entrada' | 'salida' | 'ajuste' | null>(null)
@@ -138,7 +137,7 @@ function MovimientosTab() {
 
   const params = {
     ...(typeFilter ? { type: typeFilter } : {}),
-    ...(productId ? { productId } : {}),
+    ...(productSearch ? { search: productSearch } : {}),
     ...(fromDate ? { from: fromDate } : {}),
     ...(toDate ? { to: toDate } : {}),
   }
@@ -151,15 +150,6 @@ function MovimientosTab() {
   })
 
   const movements = Array.isArray(data) ? data : []
-
-  // Product search for filter
-  const { data: productsData } = useQuery({
-    queryKey: ['products-search-filter', productSearch],
-    queryFn: () => productsApi.findAll({ search: productSearch || undefined, status: 'all' })
-      .then(r => r.data as Product[]),
-    enabled: productSearch.length > 0,
-  })
-  const foundProducts = Array.isArray(productsData) ? productsData : []
 
   const entryMutation = useMutation({
     mutationFn: (dto: unknown) => inventoryApi.createEntry(dto),
@@ -197,8 +187,6 @@ function MovimientosTab() {
     },
   })
 
-  const [showProductDropdown, setShowProductDropdown] = useState(false)
-
   return (
     <div className="space-y-4">
       {/* Éxito */}
@@ -230,51 +218,15 @@ function MovimientosTab() {
           </div>
 
           {/* Producto */}
-          <div className="flex-1 min-w-[220px] relative">
-            <label className="text-xs font-medium text-gray-500 block mb-1">Producto</label>
-            {productId ? (
-              <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 bg-gray-50">
-                <span className="text-sm text-gray-900 flex-1 truncate">{productSearch}</span>
-                <button
-                  type="button"
-                  onClick={() => { setProductId(''); setProductSearch('') }}
-                  className="text-xs text-gray-400 hover:text-gray-600 shrink-0"
-                >
-                  ✕
-                </button>
-              </div>
-            ) : (
-              <div>
-                <input
-                  type="text"
-                  placeholder="Buscar producto..."
-                  value={productSearch}
-                  onChange={e => { setProductSearch(e.target.value); setShowProductDropdown(true) }}
-                  onFocus={() => setShowProductDropdown(true)}
-                  onBlur={() => setTimeout(() => setShowProductDropdown(false), 200)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                {showProductDropdown && productSearch && foundProducts.length > 0 && (
-                  <div className="absolute z-10 top-full left-0 right-0 mt-1 border border-gray-200 rounded-lg bg-white shadow-lg max-h-40 overflow-y-auto">
-                    {foundProducts.map(p => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onMouseDown={() => {
-                          setProductId(p.id)
-                          setProductSearch(p.name)
-                          setShowProductDropdown(false)
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50"
-                      >
-                        <span className="font-medium">{p.name}</span>
-                        <span className="ml-2 text-xs text-gray-400 font-mono">({p.code})</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+          <div className="flex-1 min-w-[220px]">
+            <label className="text-xs font-medium text-gray-500 block mb-1">Buscar producto</label>
+            <input
+              type="text"
+              placeholder="Nombre o código del producto..."
+              value={productSearch}
+              onChange={e => setProductSearch(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
 
           {/* Fecha desde */}
@@ -300,9 +252,9 @@ function MovimientosTab() {
           </div>
 
           {/* Limpiar filtros */}
-          {(typeFilter || productId || fromDate || toDate) && (
+          {(typeFilter || productSearch || fromDate || toDate) && (
             <button
-              onClick={() => { setTypeFilter(''); setProductId(''); setProductSearch(''); setFromDate(''); setToDate('') }}
+              onClick={() => { setTypeFilter(''); setProductSearch(''); setFromDate(''); setToDate('') }}
               className="text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-2"
             >
               Limpiar

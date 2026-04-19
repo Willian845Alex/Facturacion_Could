@@ -63,7 +63,26 @@ export class ProductsService {
     return p;
   }
 
-  create(dto: CreateProductDto) { return this.repo.save(this.repo.create(dto)); }
+  async create(dto: CreateProductDto) {
+    if (!dto.code) {
+      dto = { ...dto, code: await this.generateCode() };
+    }
+    return this.repo.save(this.repo.create(dto));
+  }
+
+  private async generateCode(): Promise<string> {
+    const raw = await this.repo
+      .createQueryBuilder('p')
+      .select('MAX(p.code)', 'maxCode')
+      .where("p.code LIKE 'P%'")
+      .getRawOne<{ maxCode: string | null }>();
+    let num = 1;
+    if (raw?.maxCode) {
+      const parsed = parseInt(raw.maxCode.slice(1), 10);
+      if (!isNaN(parsed)) num = parsed + 1;
+    }
+    return `P${String(num).padStart(6, '0')}`;
+  }
 
   async update(id: string, dto: Partial<CreateProductDto>) {
     const p = await this.findById(id);

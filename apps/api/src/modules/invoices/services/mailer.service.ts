@@ -19,6 +19,11 @@ export class MailerService {
     private readonly rideService: SriRideService,
   ) {
     const host = config.get<string>('SMTP_HOST');
+    console.log('SMTP config:', {
+      host,
+      user: config.get('SMTP_USER'),
+      hasPass: !!config.get('SMTP_PASS'),
+    });
     if (!host) {
       this.logger.warn('SMTP_HOST no configurado — envío de emails deshabilitado');
       this.transporter = null;

@@ -28,11 +28,12 @@ export class InventoryController {
   @Get('movements')
   getMovements(
     @Query('productId') productId?: string,
+    @Query('search') search?: string,
     @Query('type') type?: MovementType,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    return this.service.getMovements(productId, type, from, to);
+    return this.service.getMovements(productId, type, from, to, search);
   }
 
   @Post('movements/entry')

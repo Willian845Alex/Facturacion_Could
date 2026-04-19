@@ -104,6 +104,8 @@ export class SriQueueProcessor {
         }
       }
       try {
+        console.log('Intentando enviar email para factura:', invoiceId);
+        console.log('Cliente email:', invoice.client?.email);
         await this.mailerService.sendInvoiceEmail(invoiceId);
       } catch (mailErr) {
         this.logger.warn(`No se pudo enviar email para factura ${invoiceId}: ${mailErr.message}`);
