@@ -51,6 +51,11 @@ export class CreditNotesService {
       throw new BadRequestException('Solo se pueden anular facturas autorizadas');
     }
 
+    if (!invoice.clientId) {
+      throw new BadRequestException(
+        'Las facturas a Consumidor Final no pueden anularse.'
+      );
+    }
     const client = await this.clientsService.findById(invoice.clientId);
     if (client.identificationType === '07' || client.identification === '9999999999999') {
       throw new BadRequestException(

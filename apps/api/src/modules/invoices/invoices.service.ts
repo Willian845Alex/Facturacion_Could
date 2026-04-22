@@ -368,7 +368,7 @@ export class InvoicesService {
       tipoIdentificacionComprador: client.identificationType,
       razonSocialComprador: client.name,
       identificacionComprador: client.identification,
-      direccionComprador: client.address,
+      direccionComprador: client.address ?? undefined,
       totalSinImpuestos: (Number(invoice.subtotal12) + Number(invoice.subtotal0)).toFixed(2),
       totalDescuento: Number(invoice.totalDescuento).toFixed(2),
       totalConImpuestos,
