@@ -1702,7 +1702,7 @@ export default function InvoicesPage() {
       }
     }
     createMutation.mutate({
-      clientId: client.id,
+      clientId: client.id ?? undefined,
       branchId,
       fechaEmision,
       items: items.map(it => ({

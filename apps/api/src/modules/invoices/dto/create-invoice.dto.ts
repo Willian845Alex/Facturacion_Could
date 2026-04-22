@@ -37,8 +37,9 @@ export class CreateInvoiceItemDto {
 }
 
 export class CreateInvoiceDto {
+  @IsOptional()
   @IsUUID()
-  clientId: string;
+  clientId?: string;
 
   @IsUUID()
   branchId: string;

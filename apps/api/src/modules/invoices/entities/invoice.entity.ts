@@ -32,8 +32,8 @@ export class Invoice {
   @Column({ type: 'timestamptz' })
   fechaEmision: Date;
 
-  @Column()
-  clientId: string;
+  @Column({ nullable: true })
+  clientId: string | null;
 
   @ManyToOne(() => Client, { eager: false })
   @JoinColumn({ name: 'clientId' })

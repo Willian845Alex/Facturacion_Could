@@ -151,7 +151,7 @@ export class InvoicesService {
   }
 
   async create(dto: CreateInvoiceDto, userId: string): Promise<Invoice> {
-    const client = await this.clientsService.findById(dto.clientId);
+    if (dto.clientId) await this.clientsService.findById(dto.clientId);
     const branch = await this.branchesService.findById(dto.branchId);
     const fechaEmision = dto.fechaEmision
       ? new Date(dto.fechaEmision + 'T00:00:00-05:00')
@@ -244,7 +244,7 @@ export class InvoicesService {
       documentType: DocumentType.FACTURA,
       status: dto.draft ? InvoiceStatus.BORRADOR : InvoiceStatus.PENDIENTE,
       fechaEmision,
-      clientId: dto.clientId,
+      clientId: dto.clientId ?? null,
       branchId: dto.branchId,
       userId,
       items,
@@ -295,7 +295,9 @@ export class InvoicesService {
     }
 
     const settings = await this.settingsService.get();
-    const client = await this.clientsService.findById(invoice.clientId);
+    const client = invoice.clientId
+      ? await this.clientsService.findById(invoice.clientId)
+      : { identificationType: '07', name: 'CONSUMIDOR FINAL', identification: '9999999999999', address: null, email: null };
     const branch = await this.branchesService.findById(invoice.branchId);
 
     const fechaStr = this.formatFecha(invoice.fechaEmision);
@@ -522,9 +524,9 @@ export class InvoicesService {
       numeroAutorizacion: invoice.numeroAutorizacion ?? '',
       fechaAutorizacion: invoice.fechaAutorizacion ? fmt(invoice.fechaAutorizacion, true) : '',
       fechaEmision: fmt(invoice.fechaEmision),
-      razonSocialComprador: invoice.client.name,
-      tipoIdentificacion: invoice.client.identificationType,
-      identificacionComprador: invoice.client.identification,
+      razonSocialComprador: invoice.client?.name ?? 'CONSUMIDOR FINAL',
+      tipoIdentificacion: invoice.client?.identificationType ?? '07',
+      identificacionComprador: invoice.client?.identification ?? '9999999999999',
       detalles: invoice.items.map(i => ({
         codigo: i.code,
         descripcion: i.description,
