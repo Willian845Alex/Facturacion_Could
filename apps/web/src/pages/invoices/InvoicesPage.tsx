@@ -352,22 +352,23 @@ function ClientSearchBar({ client, onSelect }: {
 
   const { data, isFetched } = useQuery({
     queryKey: ['cli-search', q],
-    queryFn: () => clientsApi.findAll(q).then(r => r.data as Client[]),
+    queryFn: () => clientsApi.findAll(q).then(r => ((r.data as any)?.data ?? r.data) as Client[]),
     enabled: q.length >= 2,
     staleTime: 5000,
   })
   const results: Client[] = Array.isArray(data) ? data : []
   const showNoResults = open && q.length >= 2 && isFetched && results.length === 0
 
-  const handleConsumidorFinal = async () => {
-    setLoadingCF(true)
-    try {
-      const res = await clientsApi.findAll('9999999999999')
-      const list = res.data as Client[]
-      if (list.length > 0) onSelect(list[0])
-    } finally {
-      setLoadingCF(false)
-    }
+  const handleConsumidorFinal = () => {
+    onSelect({
+      id: null as any,
+      name: 'CONSUMIDOR FINAL',
+      identification: '9999999999999',
+      identificationType: '07',
+      email: null as any,
+      phone: null as any,
+      address: null as any,
+    } as Client)
   }
 
   if (client) {
