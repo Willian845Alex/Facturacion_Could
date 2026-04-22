@@ -347,8 +347,16 @@ function ClientSearchBar({ client, onSelect }: {
 }) {
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
-  const [loadingCF] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
+
+  const { data: consumidorFinal, isLoading: loadingCF } = useQuery({
+    queryKey: ['consumidor-final'],
+    queryFn: () => clientsApi.findAll('9999999999999').then(r => {
+      const list = ((r.data as any)?.data ?? r.data) as Client[]
+      return Array.isArray(list) ? (list[0] ?? null) : null
+    }),
+    staleTime: Infinity,
+  })
 
   const { data, isFetched } = useQuery({
     queryKey: ['cli-search', q],
@@ -360,15 +368,7 @@ function ClientSearchBar({ client, onSelect }: {
   const showNoResults = open && q.length >= 2 && isFetched && results.length === 0
 
   const handleConsumidorFinal = () => {
-    onSelect({
-      id: null as any,
-      name: 'CONSUMIDOR FINAL',
-      identification: '9999999999999',
-      identificationType: '07',
-      email: null as any,
-      phone: null as any,
-      address: null as any,
-    } as Client)
+    if (consumidorFinal) onSelect(consumidorFinal)
   }
 
   if (client) {
@@ -1702,7 +1702,7 @@ export default function InvoicesPage() {
       }
     }
     createMutation.mutate({
-      clientId: client.id ?? undefined,
+      clientId: client.id,
       branchId,
       fechaEmision,
       items: items.map(it => ({
