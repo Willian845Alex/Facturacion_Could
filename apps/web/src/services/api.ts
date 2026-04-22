@@ -90,10 +90,10 @@ export const authApi = {
 };
 
 export const invoicesApi = {
-  findAll: (branchId?: string) =>
-    api.get('/invoices', { params: branchId ? { branchId } : {} }),
+  findAll: (params?: { branchId?: string; page?: number; limit?: number; search?: string; status?: string; dateFrom?: string; dateTo?: string }) =>
+    api.get('/invoices', { params }),
   findByStatus: (status: string, branchId?: string) =>
-    api.get('/invoices', { params: { status, ...(branchId ? { branchId } : {}) } }),
+    api.get('/invoices', { params: { status, limit: 200, ...(branchId ? { branchId } : {}) } }),
   findById: (id: string) => api.get(`/invoices/${id}`),
   create: (data: unknown) => api.post('/invoices', data),
   deleteDraft: (id: string) => api.delete(`/invoices/${id}`),
@@ -106,8 +106,8 @@ export const invoicesApi = {
 };
 
 export const clientsApi = {
-  findAll: (search?: string) =>
-    api.get('/clients', { params: search ? { search } : {} }),
+  findAll: (search?: string, page?: number, limit?: number) =>
+    api.get('/clients', { params: { ...(search ? { search } : {}), ...(page ? { page } : {}), ...(limit ? { limit } : {}) } }),
   findById: (id: string) => api.get(`/clients/${id}`),
   create: (data: unknown) => api.post('/clients', data),
   update: (id: string, data: unknown) => api.patch(`/clients/${id}`, data),
@@ -115,7 +115,7 @@ export const clientsApi = {
 };
 
 export const productsApi = {
-  findAll: (params?: { search?: string; status?: string; ivaRate?: string; stockFilter?: string }) =>
+  findAll: (params?: { search?: string; status?: string; ivaRate?: string; stockFilter?: string; page?: string | number; limit?: string | number }) =>
     api.get('/products', { params }),
   findById: (id: string) => api.get(`/products/${id}`),
   create: (data: unknown) => api.post('/products', data),
@@ -150,7 +150,7 @@ export const unitsApi = {
 };
 
 export const inventoryApi = {
-  getMovements: (params?: { type?: string; productId?: string; from?: string; to?: string }) =>
+  getMovements: (params?: { type?: string; productId?: string; from?: string; to?: string; search?: string; page?: number; limit?: number }) =>
     api.get('/inventory/movements', { params }),
   createEntry: (data: unknown) => api.post('/inventory/movements/entry', data),
   createExit: (data: unknown) => api.post('/inventory/movements/exit', data),
@@ -170,7 +170,7 @@ export const cashRegisterApi = {
     api.get('/cash-register/current', { params: branchId ? { branchId } : {} }),
   close: (data: { actualAmount: number; notes?: string }) =>
     api.post('/cash-register/close', data),
-  history: (page = 0, limit = 20) =>
+  history: (page = 1, limit = 20) =>
     api.get('/cash-register/history', { params: { page, limit } }),
   report: (id: string) => api.get(`/cash-register/${id}/report`),
 };
@@ -199,7 +199,7 @@ export function openBlob(blob: Blob, filename: string, forceDownload = false): v
 }
 
 export const usersApi = {
-  findAll: () => api.get('/users'),
+  findAll: (page?: number, limit?: number) => api.get('/users', { params: { ...(page ? { page } : {}), ...(limit ? { limit } : {}) } }),
   create: (data: unknown) => api.post('/users', data),
   update: (id: string, data: unknown) => api.patch('/users/' + id, data),
   remove: (id: string) => api.delete('/users/' + id),

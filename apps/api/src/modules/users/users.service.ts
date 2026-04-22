@@ -14,12 +14,15 @@ export class UsersService {
     private readonly repo: Repository<User>,
   ) {}
 
-  async findAll() {
-    return this.repo.find({
+  async findAll(page = 1, limit = 50) {
+    const [data, total] = await this.repo.findAndCount({
       select: ['id', 'email', 'name', 'role', 'branchId', 'isActive', 'createdAt'],
       relations: ['branch'],
       order: { createdAt: 'ASC' },
+      skip: (page - 1) * limit,
+      take: limit,
     });
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) || 1 };
   }
 
   async findById(id: string) {

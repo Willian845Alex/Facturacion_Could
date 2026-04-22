@@ -84,13 +84,13 @@ export class CashRegisterService {
     return this.repo.findOne({ where: { id: cr.id } });
   }
 
-  async getHistory(page = 0, limit = 20) {
-    const [items, total] = await this.repo.findAndCount({
+  async getHistory(page = 1, limit = 20) {
+    const [data, total] = await this.repo.findAndCount({
       order: { openedAt: 'DESC' },
-      skip: page * limit,
+      skip: (page - 1) * limit,
       take: limit,
     });
-    return { items, total, page, limit };
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) || 1 };
   }
 
   async getReport(id: string) {

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { cashRegisterApi } from '../../services/api'
+import Pagination from '../../components/ui/Pagination'
 
 interface CashSession {
   id: string
@@ -168,19 +169,21 @@ function ReportModal({ sessionId, onClose }: { sessionId: string; onClose: () =>
 
 // ─── History Page ──────────────────────────────────────────────────────────────
 
+const LIMIT = 20
+
 export default function CashRegisterHistoryPage() {
-  const [page, setPage] = useState(0)
+  const [page, setPage] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const LIMIT = 20
 
   const { data, isLoading } = useQuery({
     queryKey: ['cash-history', page],
-    queryFn: () => cashRegisterApi.history(page, LIMIT).then(r => r.data as { items: CashSession[]; total: number }),
+    queryFn: () => cashRegisterApi.history(page, LIMIT).then(r => r.data as { data: CashSession[]; total: number; totalPages: number }),
     staleTime: 10000,
   })
 
-  const sessions = data?.items ?? []
-  const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / LIMIT))
+  const sessions = data?.data ?? []
+  const totalItems = data?.total ?? 0
+  const totalPages = data?.totalPages ?? 1
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -263,20 +266,14 @@ export default function CashRegisterHistoryPage() {
             </div>
 
             {/* Pagination */}
-            <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
-              <span className="text-sm text-gray-500">Página {page + 1} de {totalPages}</span>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setPage(p => Math.max(0, p - 1))}
-                  disabled={page === 0}
-                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40"
-                >← Anterior</button>
-                <button
-                  onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-                  disabled={page >= totalPages - 1}
-                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40"
-                >Siguiente →</button>
-              </div>
+            <div className="px-5 border-t border-gray-100">
+              <Pagination
+                currentPage={page}
+                totalPages={totalPages}
+                totalItems={totalItems}
+                itemsPerPage={LIMIT}
+                onPageChange={setPage}
+              />
             </div>
           </>
         )}

@@ -237,7 +237,7 @@ function KardexSection() {
   const { data: productsData } = useQuery({
     queryKey: ['products-kardex-filter', productSearch],
     queryFn: () => productsApi.findAll({ search: productSearch || undefined, status: 'all' })
-      .then(r => r.data as { id: string; code: string; name: string }[]),
+      .then(r => ((r.data as any)?.data ?? r.data) as { id: string; code: string; name: string }[]),
     enabled: productSearch.length > 0,
   })
   const foundProducts = Array.isArray(productsData) ? productsData : []

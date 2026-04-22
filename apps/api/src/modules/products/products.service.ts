@@ -20,12 +20,12 @@ export class ProductsService {
     private readonly repo: Repository<Product>,
   ) {}
 
-  findAll(filters: ProductFilters | string = {}) {
+  async findAll(filters: ProductFilters | string = {}) {
     // Backward-compat: accept plain string search as before
     if (typeof filters === 'string') {
       filters = { search: filters };
     }
-    const { search, status = 'active', ivaRate, stockFilter, page = 1, limit = 500 } = filters;
+    const { search, status = 'active', ivaRate, stockFilter, page = 1, limit = 50 } = filters;
 
     const qb = this.repo.createQueryBuilder('p');
 
@@ -54,7 +54,12 @@ export class ProductsService {
       .skip((page - 1) * limit)
       .take(limit);
 
-    return qb.getMany();
+    const [data, total] = await qb.getManyAndCount();
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) || 1 };
+  }
+
+  async findAllActive(): Promise<Product[]> {
+    return this.repo.find({ where: { isActive: true } });
   }
 
   async findById(id: string) {

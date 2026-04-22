@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { productsApi, unitsApi } from '../../services/api'
+import Pagination from '../../components/ui/Pagination'
 
 interface Product {
   id: string
@@ -37,12 +38,15 @@ function SkeletonRow() {
   )
 }
 
+const PAGE_SIZE = 50
+
 export default function ProductsPage() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('active')
   const [ivaFilter, setIvaFilter] = useState('')
   const [stockFilter, setStockFilter] = useState('')
+  const [page, setPage] = useState(1)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
 
@@ -51,6 +55,8 @@ export default function ProductsPage() {
     status: statusFilter || 'active',
     ...(ivaFilter ? { ivaRate: ivaFilter } : {}),
     ...(stockFilter ? { stockFilter } : {}),
+    page,
+    limit: PAGE_SIZE,
   }
 
   const { data, isLoading } = useQuery({
@@ -59,7 +65,11 @@ export default function ProductsPage() {
     gcTime: 0,
   })
 
-  const products: Product[] = Array.isArray(data) ? data : []
+  const products: Product[] = data?.data ?? []
+  const totalItems: number = data?.total ?? 0
+  const totalPages: number = data?.totalPages ?? 1
+
+  useEffect(() => { setPage(1) }, [search, statusFilter, ivaFilter, stockFilter])
 
   const createMutation = useMutation({
     mutationFn: (dto: unknown) => productsApi.create(dto),
@@ -86,7 +96,7 @@ export default function ProductsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Productos y servicios</h1>
-          <p className="text-sm text-gray-500">{products.length} registros</p>
+          <p className="text-sm text-gray-500">{totalItems} registros</p>
         </div>
         <button
           onClick={() => { setEditing(null); setShowForm(true) }}
@@ -227,6 +237,15 @@ export default function ProductsPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Paginación */}
+      <Pagination
+        currentPage={page}
+        totalPages={totalPages}
+        totalItems={totalItems}
+        itemsPerPage={PAGE_SIZE}
+        onPageChange={setPage}
+      />
 
       {/* Modal */}
       {showForm && (

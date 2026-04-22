@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { clientsApi, productsApi, branchesApi, invoicesApi, cashRegisterApi, creditNotesApi, openBlob, type InvoiceSriEvent } from '../../services/api'
+import Pagination from '../../components/ui/Pagination'
 import { useAuthStore } from '../../store/auth.store'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -106,7 +107,7 @@ function ProductSearchBar({ onSelect }: { onSelect: (p: Product) => void }) {
 
   const { data } = useQuery({
     queryKey: ['prod-search', q],
-    queryFn: () => productsApi.findAll({ search: q }).then(r => r.data as Product[]),
+    queryFn: () => productsApi.findAll({ search: q }).then(r => ((r.data as any)?.data ?? r.data) as Product[]),
     enabled: q.length >= 1,
     staleTime: 5000,
   })
@@ -123,7 +124,7 @@ function ProductSearchBar({ onSelect }: { onSelect: (p: Product) => void }) {
     if (!code.trim()) return
     try {
       const res = await productsApi.findAll({ search: code.trim() })
-      const list = (res.data as Product[]).filter(p => p.isActive)
+      const list = (((res.data as any)?.data ?? res.data) as Product[]).filter(p => p.isActive)
       if (list.length === 1) {
         onSelect(list[0])
         setBarcode('')
@@ -774,7 +775,7 @@ function CreditNoteModal({
 
 // ─── HistorialModal ─────────────────────────────────────────────────────────────
 
-const PAGE_SIZE = 10
+const HIST_PAGE_SIZE = 50
 
 function HistorialModal({ onClose }: { onClose: () => void }) {
   const [search, setSearch] = useState('')
@@ -782,9 +783,11 @@ function HistorialModal({ onClose }: { onClose: () => void }) {
   const [dateFrom, setDateFrom] = useState('')
   const [anularInvoice, setAnularInvoice] = useState<HistorialInvoice | null>(null)
   const [dateTo, setDateTo] = useState('')
-  const [page, setPage] = useState(0)
+  const [page, setPage] = useState(1)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [sendingEmail, setSendingEmail] = useState<string | null>(null)
+
+  useEffect(() => { setPage(1) }, [search, statusFilter, dateFrom, dateTo])
 
   function showToast(msg: string, ok: boolean) {
     setToast({ msg, ok })
@@ -821,30 +824,22 @@ function HistorialModal({ onClose }: { onClose: () => void }) {
   }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['invoices-historial'],
-    queryFn: () => invoicesApi.findAll().then(r => r.data as HistorialInvoice[]),
+    queryKey: ['invoices-historial', page, search, statusFilter, dateFrom, dateTo],
+    queryFn: () => invoicesApi.findAll({
+      page,
+      limit: HIST_PAGE_SIZE,
+      search: search || undefined,
+      status: statusFilter || undefined,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+    }).then(r => r.data as { data: HistorialInvoice[]; total: number; totalPages: number }),
+    staleTime: 10000,
     gcTime: 0,
   })
-  const all: HistorialInvoice[] = Array.isArray(data) ? data : []
 
-  const filtered = all.filter(inv => {
-    if (search) {
-      const q = search.toLowerCase()
-      const match = inv.client?.name.toLowerCase().includes(q)
-        || inv.client?.identification.includes(search)
-        || invoiceNum(inv).includes(search)
-      if (!match) return false
-    }
-    if (statusFilter && inv.status !== statusFilter) return false
-    if (dateFrom && new Date(inv.fechaEmision) < new Date(dateFrom)) return false
-    if (dateTo && new Date(inv.fechaEmision) > new Date(dateTo + 'T23:59:59')) return false
-    return true
-  })
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
-
-  useEffect(() => { setPage(0) }, [search, statusFilter, dateFrom, dateTo])
+  const paginated: HistorialInvoice[] = data?.data ?? []
+  const totalItems = data?.total ?? 0
+  const totalPages = data?.totalPages ?? 1
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -853,7 +848,7 @@ function HistorialModal({ onClose }: { onClose: () => void }) {
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <div>
             <h2 className="text-lg font-bold text-gray-900">Facturas anteriores</h2>
-            <p className="text-sm text-gray-500 mt-0.5">{filtered.length} registros</p>
+            <p className="text-sm text-gray-500 mt-0.5">{totalItems} registros</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500 text-xl">×</button>
         </div>
@@ -898,7 +893,19 @@ function HistorialModal({ onClose }: { onClose: () => void }) {
         {/* Table */}
         <div className="flex-1 overflow-auto">
           {isLoading ? (
-            <p className="p-8 text-sm text-gray-500 text-center">Cargando...</p>
+            <table className="w-full text-sm">
+              <tbody>
+                {[...Array(5)].map((_, i) => (
+                  <tr key={i} className="animate-pulse border-b border-gray-100">
+                    {[...Array(7)].map((_, j) => (
+                      <td key={j} className="px-4 py-3">
+                        <div className="h-4 bg-gray-200 rounded" />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           ) : paginated.length === 0 ? (
             <p className="p-8 text-sm text-gray-400 text-center">No hay facturas que coincidan.</p>
           ) : (
@@ -1001,22 +1008,14 @@ function HistorialModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Pagination */}
-        <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
-          <span className="text-sm text-gray-500">
-            Página {page + 1} de {totalPages}
-          </span>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPage(p => Math.max(0, p - 1))}
-              disabled={page === 0}
-              className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-            >← Anterior</button>
-            <button
-              onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-              disabled={page >= totalPages - 1}
-              className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-            >Siguiente →</button>
-          </div>
+        <div className="px-6 border-t border-gray-100">
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            itemsPerPage={HIST_PAGE_SIZE}
+            onPageChange={setPage}
+          />
         </div>
       </div>
 
@@ -1046,7 +1045,7 @@ function DraftsModal({ branchId, onClose, onLoad }: {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['drafts', branchId],
     queryFn: () => invoicesApi.findByStatus('BORRADOR', branchId).then(r => {
-      const all = r.data as DraftInvoice[]
+      const all = ((r.data as any)?.data ?? r.data) as DraftInvoice[]
       return all.filter(d => {
         const ecDate = new Date(new Date(d.createdAt).getTime() - 5 * 60 * 60 * 1000)
         return ecDate.toISOString().slice(0, 10) === todayStr

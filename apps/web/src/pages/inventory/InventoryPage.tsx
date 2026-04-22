@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { inventoryApi, productsApi, openBlob } from '../../services/api'
+import Pagination from '../../components/ui/Pagination'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Product {
@@ -126,30 +127,39 @@ export default function InventoryPage() {
 }
 
 // ─── Tab 1: Movimientos ───────────────────────────────────────────────────────
+const INV_PAGE_SIZE = 50
+
 function MovimientosTab() {
   const queryClient = useQueryClient()
   const [typeFilter, setTypeFilter] = useState<string>('')
   const [productSearch, setProductSearch] = useState('')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
+  const [page, setPage] = useState(1)
   const [showModal, setShowModal] = useState<'entrada' | 'salida' | 'ajuste' | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
+
+  useEffect(() => { setPage(1) }, [typeFilter, productSearch, fromDate, toDate])
 
   const params = {
     ...(typeFilter ? { type: typeFilter } : {}),
     ...(productSearch ? { search: productSearch } : {}),
     ...(fromDate ? { from: fromDate } : {}),
     ...(toDate ? { to: toDate } : {}),
+    page,
+    limit: INV_PAGE_SIZE,
   }
 
   const { data, isLoading } = useQuery({
     queryKey: ['inventory-movements', params],
     queryFn: () =>
-      inventoryApi.getMovements(params).then(r => r.data as Movement[]),
+      inventoryApi.getMovements(params).then(r => r.data),
     gcTime: 0,
   })
 
-  const movements = Array.isArray(data) ? data : []
+  const movements: Movement[] = data?.data ?? []
+  const totalItems: number = data?.total ?? 0
+  const totalPages: number = data?.totalPages ?? 1
 
   const entryMutation = useMutation({
     mutationFn: (dto: unknown) => inventoryApi.createEntry(dto),
@@ -341,6 +351,15 @@ function MovimientosTab() {
           </tbody>
         </table>
       </div>
+
+      {/* Paginación movimientos */}
+      <Pagination
+        currentPage={page}
+        totalPages={totalPages}
+        totalItems={totalItems}
+        itemsPerPage={INV_PAGE_SIZE}
+        onPageChange={setPage}
+      />
 
       {/* Modal entrada / salida */}
       {(showModal === 'entrada' || showModal === 'salida') && (
@@ -749,7 +768,7 @@ function MovementForm({
 
   const { data: productsData } = useQuery({
     queryKey: ['products', search],
-    queryFn: () => productsApi.findAll({ search: search || undefined }).then(r => r.data as Product[]),
+    queryFn: () => productsApi.findAll({ search: search || undefined }).then(r => ((r.data as any)?.data ?? r.data) as Product[]),
   })
   const products = Array.isArray(productsData)
     ? productsData.filter(p => p.trackInventory && p.isActive)
@@ -950,7 +969,7 @@ function AdjustmentForm({
 
   const { data: productsData } = useQuery({
     queryKey: ['products', search],
-    queryFn: () => productsApi.findAll({ search: search || undefined }).then(r => r.data as Product[]),
+    queryFn: () => productsApi.findAll({ search: search || undefined }).then(r => ((r.data as any)?.data ?? r.data) as Product[]),
   })
   const products = Array.isArray(productsData)
     ? productsData.filter(p => p.trackInventory && p.isActive)

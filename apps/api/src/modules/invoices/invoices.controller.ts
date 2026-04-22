@@ -24,7 +24,22 @@ export class InvoicesController {
   findAll(
     @Query('branchId') branchId?: string,
     @Query('status') status?: string,
-  ) { return this.service.findAll(branchId, status); }
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    return this.service.findAll(
+      branchId,
+      status,
+      page ? Number(page) : undefined,
+      limit ? Number(limit) : undefined,
+      search,
+      dateFrom,
+      dateTo,
+    );
+  }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)

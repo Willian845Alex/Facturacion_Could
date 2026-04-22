@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { usersApi, branchesApi } from '../../services/api'
+import Pagination from '../../components/ui/Pagination'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -260,20 +261,26 @@ function UserModal({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+const PAGE_SIZE = 50
+
 export default function UsersPage() {
   const qc = useQueryClient()
   const [modalUser, setModalUser] = useState<UserRow | null | undefined>(undefined)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
+  const [page, setPage] = useState(1)
 
   function showToast(msg: string, ok: boolean) {
     setToast({ msg, ok })
     setTimeout(() => setToast(null), 3500)
   }
 
-  const { data: users = [], isLoading } = useQuery<UserRow[]>({
-    queryKey: ['users'],
-    queryFn: () => usersApi.findAll().then(r => r.data),
+  const { data: usersData, isLoading } = useQuery({
+    queryKey: ['users', page],
+    queryFn: () => usersApi.findAll(page, PAGE_SIZE).then(r => r.data),
   })
+  const users: UserRow[] = usersData?.data ?? []
+  const totalItems: number = usersData?.total ?? 0
+  const totalPages: number = usersData?.totalPages ?? 1
 
   const createMutation = useMutation({
     mutationFn: (data: unknown) => usersApi.create(data),
@@ -354,7 +361,19 @@ export default function UsersPage() {
         </div>
 
         {isLoading ? (
-          <div className="p-8 text-center text-sm text-gray-400">Cargando…</div>
+          <table className="w-full text-sm">
+            <tbody>
+              {[...Array(5)].map((_, i) => (
+                <tr key={i} className="animate-pulse border-b border-gray-50">
+                  {[...Array(7)].map((_, j) => (
+                    <td key={j} className="px-5 py-3.5">
+                      <div className="h-4 bg-gray-200 rounded w-full" />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         ) : users.length === 0 ? (
           <div className="p-8 text-center text-sm text-gray-400">No hay usuarios registrados</div>
         ) : (
@@ -419,6 +438,15 @@ export default function UsersPage() {
             </tbody>
           </table>
         )}
+        <div className="px-5 pb-3">
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            itemsPerPage={PAGE_SIZE}
+            onPageChange={setPage}
+          />
+        </div>
       </div>
 
       {/* Modal */}

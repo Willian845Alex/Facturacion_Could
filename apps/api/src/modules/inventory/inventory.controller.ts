@@ -32,8 +32,14 @@ export class InventoryController {
     @Query('type') type?: MovementType,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.service.getMovements(productId, type, from, to, search);
+    return this.service.getMovements(
+      productId, type, from, to, search,
+      page ? Number(page) : undefined,
+      limit ? Number(limit) : undefined,
+    );
   }
 
   @Post('movements/entry')

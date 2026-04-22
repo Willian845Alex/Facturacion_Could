@@ -12,16 +12,21 @@ export class ClientsService {
     private readonly repo: Repository<Client>,
   ) {}
 
-  findAll(search?: string) {
-    if (search) {
-      return this.repo.find({
-        where: [
+  async findAll(search?: string, page = 1, limit = 50) {
+    const where = search
+      ? [
           { name: ILike(`%${search}%`), isActive: true },
           { identification: ILike(`%${search}%`), isActive: true },
-        ],
-      });
-    }
-    return this.repo.find({ where: { isActive: true } });
+        ]
+      : [{ isActive: true }];
+
+    const [data, total] = await this.repo.findAndCount({
+      where,
+      order: { name: 'ASC' as const },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) || 1 };
   }
 
   async findById(id: string) {

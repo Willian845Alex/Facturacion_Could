@@ -41,18 +41,48 @@ export class InvoicesService {
     private readonly dataSource: DataSource,
   ) { }
 
-  async findAll(branchId?: string, status?: string) {
+  async findAll(
+    branchId?: string,
+    status?: string,
+    page = 1,
+    limit = 50,
+    search?: string,
+    dateFrom?: string,
+    dateTo?: string,
+  ) {
     const query = this.invoiceRepo.createQueryBuilder('inv')
-      .leftJoinAndSelect('inv.client', 'client')
-      .leftJoinAndSelect('inv.branch', 'branch')
-      .leftJoinAndSelect('inv.user', 'user')
-      .orderBy('inv.createdAt', 'DESC');
+      .select([
+        'inv.id', 'inv.secuencial', 'inv.status', 'inv.importeTotal',
+        'inv.fechaEmision', 'inv.createdAt', 'inv.formaPago',
+      ])
+      .leftJoin('inv.client', 'client')
+      .addSelect(['client.id', 'client.name', 'client.identification', 'client.identificationType'])
+      .leftJoin('inv.branch', 'branch')
+      .addSelect(['branch.codigoEstablecimiento', 'branch.puntoEmision'])
+      .leftJoin('inv.user', 'user')
+      .addSelect(['user.name'])
+      .orderBy('inv.createdAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
     if (branchId) query.andWhere('inv.branchId = :branchId', { branchId });
     if (status) {
       query.andWhere('inv.status = :status', { status });
-      query.leftJoinAndSelect('inv.items', 'items');
+      if (status === InvoiceStatus.BORRADOR) {
+        query.leftJoinAndSelect('inv.items', 'items');
+      }
     }
-    return query.getMany();
+    if (search) {
+      query.andWhere(
+        '(client.name ILIKE :s OR client.identification ILIKE :s OR inv.secuencial ILIKE :s)',
+        { s: `%${search}%` },
+      );
+    }
+    if (dateFrom) query.andWhere('inv.fechaEmision >= :dateFrom', { dateFrom: new Date(dateFrom) });
+    if (dateTo) query.andWhere('inv.fechaEmision <= :dateTo', { dateTo: new Date(dateTo + 'T23:59:59') });
+
+    const [data, total] = await query.getManyAndCount();
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) || 1 };
   }
 
   async deleteDraft(id: string) {

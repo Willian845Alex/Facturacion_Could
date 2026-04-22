@@ -38,7 +38,7 @@ export class CashRegisterController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.service.getHistory(Number(page ?? 0), Number(limit ?? 20));
+    return this.service.getHistory(Number(page ?? 1), Number(limit ?? 20));
   }
 
   @Get(':id/report')

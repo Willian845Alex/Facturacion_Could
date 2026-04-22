@@ -12,7 +12,17 @@ export class ClientsController {
   constructor(private readonly service: ClientsService) {}
 
   @Get()
-  findAll(@Query('search') search?: string) { return this.service.findAll(search); }
+  findAll(
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.service.findAll(
+      search,
+      page ? Number(page) : undefined,
+      limit ? Number(limit) : undefined,
+    );
+  }
 
   @Get(':id')
   findById(@Param('id') id: string) { return this.service.findById(id); }

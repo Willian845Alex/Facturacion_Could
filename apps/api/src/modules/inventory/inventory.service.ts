@@ -80,10 +80,13 @@ export class InventoryService {
     return this.registrarMovimiento(productId, type, Math.abs(delta), undefined, motive, motive);
   }
 
-  getMovements(productId?: string, type?: MovementType, from?: string, to?: string, search?: string) {
+  async getMovements(productId?: string, type?: MovementType, from?: string, to?: string, search?: string, page = 1, limit = 50) {
     const query = this.repo.createQueryBuilder('m')
-      .leftJoinAndSelect('m.product', 'product')
-      .orderBy('m.createdAt', 'DESC');
+      .leftJoin('m.product', 'product')
+      .addSelect(['product.id', 'product.name', 'product.code', 'product.unit'])
+      .orderBy('m.createdAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
     if (productId) query.andWhere('m.productId = :productId', { productId });
     if (search) {
       query.andWhere(
@@ -94,7 +97,8 @@ export class InventoryService {
     if (type) query.andWhere('m.type = :type', { type });
     if (from) query.andWhere('m.createdAt >= :from', { from: new Date(from) });
     if (to) query.andWhere('m.createdAt <= :to', { to: new Date(to + 'T23:59:59') });
-    return query.getMany();
+    const [data, total] = await query.getManyAndCount();
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) || 1 };
   }
 
   async getKardexExport(): Promise<string> {
@@ -261,7 +265,7 @@ export class InventoryService {
   // ─── Resumen de inventario ───────────────────────────────────────────────────
 
   async getSummary() {
-    const all = await this.productsService.findAll();
+    const all = await this.productsService.findAllActive();
     const tracked = all.filter(p => p.trackInventory);
     if (tracked.length === 0) return [];
 

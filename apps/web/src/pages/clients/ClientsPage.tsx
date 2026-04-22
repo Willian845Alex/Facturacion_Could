@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { clientsApi } from '../../services/api'
+import Pagination from '../../components/ui/Pagination'
 
 interface Customer {
   id: string
@@ -19,19 +20,38 @@ const ID_LABELS: Record<string, string> = {
   '07': 'Consumidor Final',
 }
 
+const PAGE_SIZE = 50
+
+function SkeletonRow({ cols }: { cols: number }) {
+  return (
+    <tr className="animate-pulse">
+      {[...Array(cols)].map((_, i) => (
+        <td key={i} className="px-4 py-3">
+          <div className="h-4 bg-gray-200 rounded w-full" />
+        </td>
+      ))}
+    </tr>
+  )
+}
+
 export default function ClientsPage() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Customer | null>(null)
 
+  useEffect(() => { setPage(1) }, [search])
+
   // ─── Cargar clientes ──────────────────────────────────────────────
   const { data, isLoading } = useQuery({
-    queryKey: ['customers', search],
-    queryFn: () => clientsApi.findAll(search).then(r => r.data?.data ?? r.data),
+    queryKey: ['customers', search, page],
+    queryFn: () => clientsApi.findAll(search, page, PAGE_SIZE).then(r => r.data),
   })
 
-  const customers: Customer[] = Array.isArray(data) ? data : []
+  const customers: Customer[] = data?.data ?? []
+  const totalItems: number = data?.total ?? 0
+  const totalPages: number = data?.totalPages ?? 1
 
   // ─── Mutaciones ───────────────────────────────────────────────────
   const createMutation = useMutation({
@@ -64,7 +84,7 @@ export default function ClientsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Clientes</h1>
-          <p className="text-sm text-gray-500">{customers.length} registros</p>
+          <p className="text-sm text-gray-500">{totalItems} registros</p>
         </div>
         <button
           onClick={() => { setEditing(null); setShowForm(true) }}
@@ -85,24 +105,28 @@ export default function ClientsPage() {
 
       {/* Tabla */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        {isLoading ? (
-          <p className="p-6 text-sm text-gray-500">Cargando...</p>
-        ) : customers.length === 0 ? (
-          <p className="p-6 text-sm text-gray-500">No hay clientes registrados.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Identificación</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Nombre</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Email</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Teléfono</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Estado</th>
+              <th className="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {isLoading ? (
+              [...Array(5)].map((_, i) => <SkeletonRow key={i} cols={6} />)
+            ) : customers.length === 0 ? (
               <tr>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Identificación</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Nombre</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Email</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Teléfono</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Estado</th>
-                <th className="px-4 py-3"></th>
+                <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">
+                  No hay clientes registrados.
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {customers.map(c => (
+            ) : (
+              customers.map(c => (
                 <tr key={c.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
                     <span className="text-xs text-gray-400">{ID_LABELS[c.identificationType] ?? c.identificationType}</span>
@@ -130,10 +154,17 @@ export default function ClientsPage() {
                     </button>
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+              ))
+            )}
+          </tbody>
+        </table>
+        <Pagination
+          currentPage={page}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          itemsPerPage={PAGE_SIZE}
+          onPageChange={setPage}
+        />
       </div>
 
       {/* Modal formulario */}
