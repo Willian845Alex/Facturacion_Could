@@ -347,7 +347,7 @@ function ClientSearchBar({ client, onSelect }: {
 }) {
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
-  const [loadingCF, setLoadingCF] = useState(false)
+  const [loadingCF] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
 
   const { data, isFetched } = useQuery({
