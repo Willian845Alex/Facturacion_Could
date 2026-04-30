@@ -69,10 +69,26 @@ export class ProductsService {
   }
 
   async create(dto: CreateProductDto) {
-    if (!dto.code) {
-      dto = { ...dto, code: await this.generateCode() };
+    let attempts = 0;
+
+    while (attempts < 3) {
+      try {
+        if (!dto.code) {
+          dto.code = await this.generateCode();
+        }
+
+        return await this.repo.save(this.repo.create(dto));
+      } catch (error: any) {
+        if (error.code === '23505') {
+          dto.code = undefined;
+          attempts++;
+        } else {
+          throw error;
+        }
+      }
     }
-    return this.repo.save(this.repo.create(dto));
+
+    throw new Error('No se pudo generar un código único');
   }
 
   private async generateCode(): Promise<string> {
