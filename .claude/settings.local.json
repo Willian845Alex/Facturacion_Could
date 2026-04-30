@@ -45,7 +45,8 @@
       "Bash('C:/Program Files/Memurai/memurai-cli.exe' HGET bull:sri-queue:__TRACKED_VAR__ name)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(git rm *)"
     ]
   }
 }

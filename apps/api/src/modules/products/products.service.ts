@@ -18,7 +18,7 @@ export class ProductsService {
   constructor(
     @InjectRepository(Product)
     private readonly repo: Repository<Product>,
-  ) {}
+  ) { }
 
   async findAll(filters: ProductFilters | string = {}) {
     // Backward-compat: accept plain string search as before
@@ -76,17 +76,23 @@ export class ProductsService {
   }
 
   private async generateCode(): Promise<string> {
-    const raw = await this.repo
-      .createQueryBuilder('p')
-      .select('MAX(p.code)', 'maxCode')
-      .where("p.code LIKE 'P%'")
-      .getRawOne<{ maxCode: string | null }>();
-    let num = 1;
-    if (raw?.maxCode) {
-      const parsed = parseInt(raw.maxCode.slice(1), 10);
-      if (!isNaN(parsed)) num = parsed + 1;
+    const lastProduct = await this.repo
+      .createQueryBuilder('product')
+      .where("product.code LIKE 'P%'")
+      .orderBy("LENGTH(product.code)", "DESC")
+      .addOrderBy("product.code", "DESC")
+      .getOne();
+
+    let nextNumber = 1;
+
+    if (lastProduct) {
+      const lastNumber = parseInt(lastProduct.code.replace('P', ''));
+      if (!isNaN(lastNumber)) {
+        nextNumber = lastNumber + 1;
+      }
     }
-    return `P${String(num).padStart(6, '0')}`;
+
+    return 'P' + nextNumber.toString().padStart(6, '0');
   }
 
   async update(id: string, dto: Partial<CreateProductDto>) {
