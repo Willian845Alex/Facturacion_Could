@@ -94,15 +94,14 @@ export class ProductsService {
   private async generateCode(): Promise<string> {
     const lastProduct = await this.repo
       .createQueryBuilder('product')
-      .where("product.code LIKE 'P%'")
-      .orderBy("LENGTH(product.code)", "DESC")
-      .addOrderBy("product.code", "DESC")
+      .where("product.code ~ '^P[0-9]+$'") // regex más seguro
+      .orderBy("CAST(SUBSTRING(product.code FROM 2) AS INTEGER)", "DESC")
       .getOne();
 
     let nextNumber = 1;
 
     if (lastProduct) {
-      const lastNumber = parseInt(lastProduct.code.replace('P', ''));
+      const lastNumber = parseInt(lastProduct.code.replace('P', ''), 10);
       if (!isNaN(lastNumber)) {
         nextNumber = lastNumber + 1;
       }
