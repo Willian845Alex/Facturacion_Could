@@ -1171,13 +1171,13 @@ function SuccessModal({ invoice, isDraft, sriStatus, sriEvent, onClose, onRetry 
   onClose: () => void
   onRetry: () => void
 }) {
-  const [elapsed, setElapsed] = useState(0)
-  useEffect(() => {
-    if (sriStatus !== 'sending') return
-    setElapsed(0)
-    const t = setInterval(() => setElapsed(s => s + 1), 1000)
-    return () => clearInterval(t)
-  }, [sriStatus])
+  // const [elapsed, setElapsed] = useState(0)
+  // useEffect(() => {
+  //   if (sriStatus !== 'sending') return
+  //   setElapsed(0)
+  //   const t = setInterval(() => setElapsed(s => s + 1), 1000)
+  //   return () => clearInterval(t)
+  // }, [sriStatus])
   if (isDraft) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
