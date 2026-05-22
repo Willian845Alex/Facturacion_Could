@@ -709,11 +709,10 @@ function CreditNoteModal({
                 <button
                   key={t}
                   onClick={() => setType(t)}
-                  className={`py-2 rounded-lg text-sm font-medium border transition-colors ${
-                    type === t
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300'
-                  }`}
+                  className={`py-2 rounded-lg text-sm font-medium border transition-colors ${type === t
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300'
+                    }`}
                 >
                   {t === 'TOTAL' ? 'Total' : 'Parcial'}
                 </button>
@@ -856,9 +855,8 @@ function HistorialModal({ onClose }: { onClose: () => void }) {
 
         {/* Toast */}
         {toast && (
-          <div className={`mx-6 mt-3 px-4 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 ${
-            toast.ok ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'
-          }`}>
+          <div className={`mx-6 mt-3 px-4 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 ${toast.ok ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'
+            }`}>
             <span>{toast.ok ? '✓' : '✕'}</span>
             <span>{toast.msg}</span>
           </div>
@@ -975,15 +973,15 @@ function HistorialModal({ onClose }: { onClose: () => void }) {
                               className="text-blue-600 hover:underline text-xs font-medium"
                             >XML</button>
                             {inv.client?.identificationType !== '07' &&
-                             inv.client?.identification !== '9999999999999' && (
-                              <button
-                                onClick={() => setAnularInvoice(inv)}
-                                className="text-red-500 hover:text-red-700 text-xs font-medium border border-red-200 rounded px-1.5 py-0.5 hover:bg-red-50"
-                                title="Emitir nota de crédito / anular"
-                              >
-                                Anular
-                              </button>
-                            )}
+                              inv.client?.identification !== '9999999999999' && (
+                                <button
+                                  onClick={() => setAnularInvoice(inv)}
+                                  className="text-red-500 hover:text-red-700 text-xs font-medium border border-red-200 rounded px-1.5 py-0.5 hover:bg-red-50"
+                                  title="Emitir nota de crédito / anular"
+                                >
+                                  Anular
+                                </button>
+                              )}
                           </>
                         )}
                         {inv.status === 'PENDIENTE' && (
@@ -1206,24 +1204,34 @@ function SuccessModal({ invoice, isDraft, sriStatus, sriEvent, onClose, onRetry 
         {/* SENDING */}
         {sriStatus === 'sending' && (
           <>
-            <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-blue-500 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+            <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+              <svg className="w-9 h-9 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-1">Autorizando con el SRI…</h2>
-            <p className="text-sm text-gray-500 mb-4">
-              Factura {invoiceNum(invoice)} · ${Number(invoice.importeTotal).toFixed(2)}
+            <h2 className="text-xl font-bold text-gray-900 mb-1">Factura guardada</h2>
+            <p className="text-sm text-gray-500 mb-1">
+              No. <span className="font-mono font-semibold text-gray-800">{invoiceNum(invoice)}</span>
             </p>
-            <p className="text-xs text-gray-400">
-              {elapsed}s —{' '}
-              {elapsed <= 10
-                ? 'Enviando al SRI...'
-                : elapsed <= 30
-                ? 'El SRI está procesando la factura...'
-                : 'Esto está tardando más de lo normal...'}
-            </p>
+            <p className="text-3xl font-bold text-blue-600 mb-4">${Number(invoice.importeTotal).toFixed(2)}</p>
+            <div className="space-y-2 mb-4">
+              <button
+                onClick={() => printTicket(invoice.id)}
+                className="w-full flex items-center justify-center gap-2 bg-gray-800 text-white font-medium py-2.5 rounded-xl text-sm hover:bg-gray-900"
+              >
+                🖨️ Imprimir tirilla
+              </button>
+              <button onClick={onClose} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl text-sm">
+                Nueva venta
+              </button>
+            </div>
+            <div className="flex items-center gap-2 justify-center text-xs text-gray-400">
+              <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+              </svg>
+              Enviando al SRI en segundo plano...
+            </div>
           </>
         )}
 
@@ -1808,9 +1816,8 @@ export default function InvoicesPage() {
 
       {/* ─── Cash register status bar ─── */}
       {!cashLoading && (
-        <div className={`shrink-0 px-4 py-2 flex items-center justify-between text-xs ${
-          cashIsOpen ? 'bg-green-600 text-white' : 'bg-amber-500 text-white'
-        }`}>
+        <div className={`shrink-0 px-4 py-2 flex items-center justify-between text-xs ${cashIsOpen ? 'bg-green-600 text-white' : 'bg-amber-500 text-white'
+          }`}>
           <div className="flex items-center gap-2">
             <span className={`w-2 h-2 rounded-full ${cashIsOpen ? 'bg-white/70 animate-pulse' : 'bg-white/70'}`} />
             {cashIsOpen
@@ -1831,235 +1838,234 @@ export default function InvoicesPage() {
 
       <div className="flex flex-1 overflow-hidden">
 
-      {/* ─── Left column 60% ─── */}
-      <div className="flex flex-col bg-white" style={{ width: '60%' }}>
+        {/* ─── Left column 60% ─── */}
+        <div className="flex flex-col bg-white" style={{ width: '60%' }}>
 
-        {/* Search bars */}
-        <div className="p-4 border-b border-gray-200 space-y-3 shrink-0">
-          <ClientSearchBar client={client} onSelect={setClient} />
-          <ProductSearchBar onSelect={addProduct} />
-        </div>
+          {/* Search bars */}
+          <div className="p-4 border-b border-gray-200 space-y-3 shrink-0">
+            <ClientSearchBar client={client} onSelect={setClient} />
+            <ProductSearchBar onSelect={addProduct} />
+          </div>
 
-        {/* Items table — scrollable */}
-        <div className="flex-1 overflow-auto px-4 py-3">
-          <ItemsTable items={items} onChange={setItems} />
-        </div>
+          {/* Items table — scrollable */}
+          <div className="flex-1 overflow-auto px-4 py-3">
+            <ItemsTable items={items} onChange={setItems} />
+          </div>
 
-        {/* Payment method */}
-        <div className="border-t border-gray-200 p-4 bg-gray-50 shrink-0">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Método de pago</p>
-          <div className="flex gap-2">
-            {PAYMENT_OPTIONS.map(opt => (
-              <button
-                key={opt.code}
-                onClick={() => setFormaPago(opt.code)}
-                className={`flex-1 py-3 rounded-xl text-sm font-semibold border-2 transition-all ${
-                  formaPago === opt.code
+          {/* Payment method */}
+          <div className="border-t border-gray-200 p-4 bg-gray-50 shrink-0">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Método de pago</p>
+            <div className="flex gap-2">
+              {PAYMENT_OPTIONS.map(opt => (
+                <button
+                  key={opt.code}
+                  onClick={() => setFormaPago(opt.code)}
+                  className={`flex-1 py-3 rounded-xl text-sm font-semibold border-2 transition-all ${formaPago === opt.code
                     ? 'bg-blue-600 text-white border-blue-600 shadow-md'
                     : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300 hover:text-blue-600'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          {formaPago === '01' && (
-            <div className="mt-3 flex items-end gap-4">
-              <div className="flex-1">
-                <label className="text-xs text-gray-500 mb-1 block">Monto recibido</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-gray-400 text-sm font-medium">$</span>
-                  <input
-                    type="number" step="0.01" min="0"
-                    value={montoRecibido}
-                    onChange={e => setMontoRecibido(e.target.value)}
-                    placeholder="0.00"
-                    className="w-full pl-7 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                  />
+                    }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {formaPago === '01' && (
+              <div className="mt-3 flex items-end gap-4">
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500 mb-1 block">Monto recibido</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-gray-400 text-sm font-medium">$</span>
+                    <input
+                      type="number" step="0.01" min="0"
+                      value={montoRecibido}
+                      onChange={e => setMontoRecibido(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full pl-7 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    />
+                  </div>
                 </div>
+                {vuelto !== null && parseFloat(montoRecibido) > 0 && (
+                  <div className="text-center pb-0.5">
+                    {vuelto >= 0 ? (
+                      <>
+                        <p className="text-xs text-gray-500 mb-0.5">Vuelto</p>
+                        <p className="text-2xl font-bold tabular-nums text-green-600">${vuelto.toFixed(2)}</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-xs text-gray-500 mb-0.5">Falta</p>
+                        <p className="text-2xl font-bold tabular-nums text-red-500">${Math.abs(vuelto).toFixed(2)}</p>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
-              {vuelto !== null && parseFloat(montoRecibido) > 0 && (
-                <div className="text-center pb-0.5">
-                  {vuelto >= 0 ? (
-                    <>
-                      <p className="text-xs text-gray-500 mb-0.5">Vuelto</p>
-                      <p className="text-2xl font-bold tabular-nums text-green-600">${vuelto.toFixed(2)}</p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-xs text-gray-500 mb-0.5">Falta</p>
-                      <p className="text-2xl font-bold tabular-nums text-red-500">${Math.abs(vuelto).toFixed(2)}</p>
-                    </>
-                  )}
+            )}
+          </div>
+        </div>
+
+        {/* ─── Divider ─── */}
+        <div className="w-px bg-gray-200 shrink-0" />
+
+        {/* ─── Right column 40% ─── */}
+        <div className="flex flex-col bg-white" style={{ width: '40%' }}>
+
+          {/* Emission data */}
+          <div className="px-5 py-4 border-b border-gray-200 grid grid-cols-2 gap-3 shrink-0">
+            <div>
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide block mb-1.5">
+                Punto de emisión
+              </label>
+              {isVendedor ? (
+                <div className="w-full border border-gray-200 bg-gray-50 rounded-lg px-2.5 py-2 text-sm text-gray-700">
+                  {vendedorBranch
+                    ? <span><span className="font-mono font-semibold text-gray-900">{vendedorBranch.codigoEstablecimiento}-{vendedorBranch.puntoEmision}</span> — {vendedorBranch.name}</span>
+                    : <span className="text-gray-400 italic">Cargando…</span>
+                  }
                 </div>
+              ) : (
+                <select
+                  value={branchId}
+                  onChange={e => setBranchId(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Seleccionar…</option>
+                  {branches.map(b => (
+                    <option key={b.id} value={b.id}>
+                      {b.codigoEstablecimiento}-{b.puntoEmision} {b.name}
+                    </option>
+                  ))}
+                </select>
               )}
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* ─── Divider ─── */}
-      <div className="w-px bg-gray-200 shrink-0" />
-
-      {/* ─── Right column 40% ─── */}
-      <div className="flex flex-col bg-white" style={{ width: '40%' }}>
-
-        {/* Emission data */}
-        <div className="px-5 py-4 border-b border-gray-200 grid grid-cols-2 gap-3 shrink-0">
-          <div>
-            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide block mb-1.5">
-              Punto de emisión
-            </label>
-            {isVendedor ? (
-              <div className="w-full border border-gray-200 bg-gray-50 rounded-lg px-2.5 py-2 text-sm text-gray-700">
-                {vendedorBranch
-                  ? <span><span className="font-mono font-semibold text-gray-900">{vendedorBranch.codigoEstablecimiento}-{vendedorBranch.puntoEmision}</span> — {vendedorBranch.name}</span>
-                  : <span className="text-gray-400 italic">Cargando…</span>
-                }
-              </div>
-            ) : (
-              <select
-                value={branchId}
-                onChange={e => setBranchId(e.target.value)}
+            <div>
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide block mb-1.5">Fecha</label>
+              <input
+                type="date" value={fechaEmision}
+                onChange={e => setFechaEmision(e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Seleccionar…</option>
-                {branches.map(b => (
-                  <option key={b.id} value={b.id}>
-                    {b.codigoEstablecimiento}-{b.puntoEmision} {b.name}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide block mb-1.5">Fecha</label>
-            <input
-              type="date" value={fechaEmision}
-              onChange={e => setFechaEmision(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-        </div>
-
-        {/* Totals summary */}
-        <div className="flex-1 overflow-auto px-5 py-4">
-          {items.length > 0 && (
-            <div className="space-y-1 mb-4">
-              {items.map(it => {
-                const net = it.quantity * it.unitPrice * (1 - (it.discount || 0) / 100)
-                return (
-                  <div key={it._key} className="flex justify-between text-sm">
-                    <span className="text-gray-500 truncate mr-3 min-w-0">
-                      {it.quantity > 1 && <span className="font-medium text-gray-700">{it.quantity}×&nbsp;</span>}
-                      {it.description}
-                    </span>
-                    <span className="text-gray-800 font-mono shrink-0">${net.toFixed(2)}</span>
-                  </div>
-                )
-              })}
+              />
             </div>
-          )}
+          </div>
 
-          <div className="border-t border-gray-100 pt-3 space-y-2">
-            {totals.subtotal0 > 0 && (
-              <div className="flex justify-between text-sm text-gray-500">
-                <span>Subtotal 0%</span>
-                <span className="font-mono">${totals.subtotal0.toFixed(2)}</span>
+          {/* Totals summary */}
+          <div className="flex-1 overflow-auto px-5 py-4">
+            {items.length > 0 && (
+              <div className="space-y-1 mb-4">
+                {items.map(it => {
+                  const net = it.quantity * it.unitPrice * (1 - (it.discount || 0) / 100)
+                  return (
+                    <div key={it._key} className="flex justify-between text-sm">
+                      <span className="text-gray-500 truncate mr-3 min-w-0">
+                        {it.quantity > 1 && <span className="font-medium text-gray-700">{it.quantity}×&nbsp;</span>}
+                        {it.description}
+                      </span>
+                      <span className="text-gray-800 font-mono shrink-0">${net.toFixed(2)}</span>
+                    </div>
+                  )
+                })}
               </div>
             )}
-            {totals.subtotalGravado > 0 && (
-              <div className="flex justify-between text-sm text-gray-500">
-                <span>Subtotal gravado</span>
-                <span className="font-mono">${totals.subtotalGravado.toFixed(2)}</span>
-              </div>
-            )}
-            {totals.totalDescuento > 0 && (
-              <div className="flex justify-between text-sm text-red-500">
-                <span>Descuento</span>
-                <span className="font-mono">-${totals.totalDescuento.toFixed(2)}</span>
-              </div>
-            )}
-            {Object.entries(totals.ivaByRate)
-              .sort(([a], [b]) => Number(b) - Number(a))
-              .map(([rate, amount]) => (
-                <div key={rate} className="flex justify-between text-sm text-gray-500">
-                  <span>IVA {rate}%</span>
-                  <span className="font-mono">${amount.toFixed(2)}</span>
+
+            <div className="border-t border-gray-100 pt-3 space-y-2">
+              {totals.subtotal0 > 0 && (
+                <div className="flex justify-between text-sm text-gray-500">
+                  <span>Subtotal 0%</span>
+                  <span className="font-mono">${totals.subtotal0.toFixed(2)}</span>
                 </div>
-              ))}
+              )}
+              {totals.subtotalGravado > 0 && (
+                <div className="flex justify-between text-sm text-gray-500">
+                  <span>Subtotal gravado</span>
+                  <span className="font-mono">${totals.subtotalGravado.toFixed(2)}</span>
+                </div>
+              )}
+              {totals.totalDescuento > 0 && (
+                <div className="flex justify-between text-sm text-red-500">
+                  <span>Descuento</span>
+                  <span className="font-mono">-${totals.totalDescuento.toFixed(2)}</span>
+                </div>
+              )}
+              {Object.entries(totals.ivaByRate)
+                .sort(([a], [b]) => Number(b) - Number(a))
+                .map(([rate, amount]) => (
+                  <div key={rate} className="flex justify-between text-sm text-gray-500">
+                    <span>IVA {rate}%</span>
+                    <span className="font-mono">${amount.toFixed(2)}</span>
+                  </div>
+                ))}
+            </div>
+
+            <div className="border-t-2 border-blue-100 mt-3 pt-3">
+              <div className="flex justify-between items-baseline">
+                <span className="text-base font-bold text-gray-700 uppercase tracking-wide">Total</span>
+                <span className="text-4xl font-black text-blue-600 tabular-nums">
+                  ${totals.importeTotal.toFixed(2)}
+                </span>
+              </div>
+              <p className="text-right text-xs text-gray-400 mt-0.5">
+                {items.length} {items.length === 1 ? 'producto' : 'productos'}
+              </p>
+            </div>
           </div>
 
-          <div className="border-t-2 border-blue-100 mt-3 pt-3">
-            <div className="flex justify-between items-baseline">
-              <span className="text-base font-bold text-gray-700 uppercase tracking-wide">Total</span>
-              <span className="text-4xl font-black text-blue-600 tabular-nums">
-                ${totals.importeTotal.toFixed(2)}
-              </span>
+          {/* Action buttons */}
+          <div className="px-5 py-4 border-t border-gray-200 space-y-2.5 shrink-0">
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">
+                {error}
+              </div>
+            )}
+            <button
+              onClick={() => handleSubmit(false)}
+              disabled={createMutation.isPending}
+              className="w-full bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-black py-4 rounded-2xl text-lg disabled:opacity-50 transition-colors shadow-lg shadow-green-200"
+            >
+              {createMutation.isPending ? 'Procesando…' : 'EMITIR FACTURA'}
+            </button>
+            <button
+              onClick={() => handleSubmit(true)}
+              disabled={createMutation.isPending}
+              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-medium py-2.5 rounded-xl text-sm disabled:opacity-50 transition-colors"
+            >
+              Guardar borrador
+            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowHistorial(true)}
+                className="flex-1 border-2 border-blue-200 text-blue-600 font-medium py-2.5 rounded-xl text-sm hover:bg-blue-50 transition-colors"
+              >
+                Ver facturas
+              </button>
+              <button
+                onClick={() => setShowDrafts(true)}
+                className="flex-1 border-2 border-gray-200 text-gray-600 font-medium py-2.5 rounded-xl text-sm hover:bg-gray-50 transition-colors"
+              >
+                Borradores
+              </button>
             </div>
-            <p className="text-right text-xs text-gray-400 mt-0.5">
-              {items.length} {items.length === 1 ? 'producto' : 'productos'}
-            </p>
           </div>
         </div>
 
-        {/* Action buttons */}
-        <div className="px-5 py-4 border-t border-gray-200 space-y-2.5 shrink-0">
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">
-              {error}
-            </div>
-          )}
-          <button
-            onClick={() => handleSubmit(false)}
-            disabled={createMutation.isPending}
-            className="w-full bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-black py-4 rounded-2xl text-lg disabled:opacity-50 transition-colors shadow-lg shadow-green-200"
-          >
-            {createMutation.isPending ? 'Procesando…' : 'EMITIR FACTURA'}
-          </button>
-          <button
-            onClick={() => handleSubmit(true)}
-            disabled={createMutation.isPending}
-            className="w-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-medium py-2.5 rounded-xl text-sm disabled:opacity-50 transition-colors"
-          >
-            Guardar borrador
-          </button>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setShowHistorial(true)}
-              className="flex-1 border-2 border-blue-200 text-blue-600 font-medium py-2.5 rounded-xl text-sm hover:bg-blue-50 transition-colors"
-            >
-              Ver facturas
-            </button>
-            <button
-              onClick={() => setShowDrafts(true)}
-              className="flex-1 border-2 border-gray-200 text-gray-600 font-medium py-2.5 rounded-xl text-sm hover:bg-gray-50 transition-colors"
-            >
-              Borradores
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* ─── Modals ─── */}
-      {showHistorial && <HistorialModal onClose={() => setShowHistorial(false)} />}
-      {showDrafts && (
-        <DraftsModal
-          branchId={branchId}
-          onClose={() => setShowDrafts(false)}
-          onLoad={loadDraft}
-        />
-      )}
-      {successState && (
-        <SuccessModal
-          invoice={successState.invoice}
-          isDraft={successState.isDraft}
-          sriStatus={sriStatus}
-          sriEvent={sriEvent}
-          onClose={resetForm}
-          onRetry={handleRetry}
-        />
-      )}
+        {/* ─── Modals ─── */}
+        {showHistorial && <HistorialModal onClose={() => setShowHistorial(false)} />}
+        {showDrafts && (
+          <DraftsModal
+            branchId={branchId}
+            onClose={() => setShowDrafts(false)}
+            onLoad={loadDraft}
+          />
+        )}
+        {successState && (
+          <SuccessModal
+            invoice={successState.invoice}
+            isDraft={successState.isDraft}
+            sriStatus={sriStatus}
+            sriEvent={sriEvent}
+            onClose={resetForm}
+            onRetry={handleRetry}
+          />
+        )}
       </div>{/* end flex flex-1 */}
 
       {/* ─── Open cash overlay (blocks POS) ─── */}

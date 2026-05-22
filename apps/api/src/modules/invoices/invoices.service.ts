@@ -271,7 +271,7 @@ export class InvoicesService {
       // Encolar para procesamiento SRI
       try {
         await this.sriQueue.add('procesar-factura', { invoiceId: saved.id }, {
-          attempts: 10,
+          attempts: 3,
           backoff: { type: 'fixed', delay: 30000 }, // 30s entre reintentos
         });
       } catch (err) {
