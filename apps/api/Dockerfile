@@ -19,6 +19,17 @@ WORKDIR /app
 
 RUN apk add --no-cache openjdk17-jre
 
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont
+
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
 COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages ./packages

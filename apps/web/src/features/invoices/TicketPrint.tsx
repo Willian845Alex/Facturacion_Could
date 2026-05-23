@@ -354,10 +354,6 @@ export default function TicketPrint({ data }: { data: TicketData }) {
           Ambiente: {empresa.ambiente === 2 ? 'PRODUCCIÓN' : 'PRUEBAS'}
         </div>
 
-        {qrUrl && (
-          <img className="tk-qr" src={qrUrl} alt="Clave de acceso QR" />
-        )}
-
         <div className="tk-center tk-bold" style={{ fontSize: '11pt', marginTop: '2mm' }}>
           ¡Gracias por su compra!
         </div>
