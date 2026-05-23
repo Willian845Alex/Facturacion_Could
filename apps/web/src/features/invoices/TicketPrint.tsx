@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
-import QRCode from 'qrcode'
+// import { useEffect, useState } from 'react'
+// import QRCode from 'qrcode'
+import React from 'react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -192,21 +193,21 @@ const TICKET_CSS = `
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function TicketPrint({ data }: { data: TicketData }) {
-  const [qrUrl, setQrUrl] = useState<string>('')
+  // const [qrUrl, setQrUrl] = useState<string>('')
   const { empresa, factura } = data
 
-  useEffect(() => {
-    if (factura.claveAcceso) {
-      QRCode.toDataURL(factura.claveAcceso, {
-        width: 160,
-        margin: 1,
-        errorCorrectionLevel: 'M',
-        color: { dark: '#000000', light: '#ffffff' },
-      })
-        .then(url => setQrUrl(url))
-        .catch(() => {})
-    }
-  }, [factura.claveAcceso])
+  // useEffect(() => {
+  //   if (factura.claveAcceso) {
+  //     QRCode.toDataURL(factura.claveAcceso, {
+  //       width: 160,
+  //       margin: 1,
+  //       errorCorrectionLevel: 'M',
+  //       color: { dark: '#000000', light: '#ffffff' },
+  //     })
+  //       .then(url => setQrUrl(url))
+  //       .catch(() => {})
+  //   }
+  // }, [factura.claveAcceso])
 
   const fechaEmision = new Date(factura.fechaEmision)
   const fechaStr = fechaEmision.toLocaleDateString('es-EC', {
