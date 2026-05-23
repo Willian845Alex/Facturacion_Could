@@ -1,6 +1,6 @@
 // import { useEffect, useState } from 'react'
 // import QRCode from 'qrcode'
-import React from 'react'
+// import React from 'react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
