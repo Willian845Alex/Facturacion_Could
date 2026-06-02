@@ -8,3 +8,12 @@ dist
 .turbo
 coverage
 .env.local
+
+# Java compiled
+apps/signer/target/
+*.class
+*.jar
+
+# Archivos temporales
+cert.validity*
+apps/web/tsconfig.tsbuildinfo
