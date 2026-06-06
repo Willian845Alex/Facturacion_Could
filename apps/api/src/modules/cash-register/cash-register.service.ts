@@ -14,7 +14,7 @@ export class CashRegisterService {
     private readonly repo: Repository<CashRegister>,
     @InjectRepository(Invoice)
     private readonly invoiceRepo: Repository<Invoice>,
-  ) {}
+  ) { }
 
   async open(dto: OpenCashDto, user: { id: string; name: string }) {
     const existing = await this.repo.findOne({
@@ -147,7 +147,9 @@ export class CashRegisterService {
       .createQueryBuilder('inv')
       .leftJoinAndSelect('inv.client', 'client')
       .where('inv.branchId = :branchId', { branchId })
-      .andWhere('inv.status = :status', { status: InvoiceStatus.AUTORIZADO })
+      .andWhere('inv.status IN (:...statuses)', {
+        statuses: [InvoiceStatus.AUTORIZADO, InvoiceStatus.PENDIENTE]
+      })
       .andWhere('inv.createdAt >= :from', { from })
       .andWhere('inv.createdAt <= :to', { to })
       .orderBy('inv.createdAt', 'ASC')

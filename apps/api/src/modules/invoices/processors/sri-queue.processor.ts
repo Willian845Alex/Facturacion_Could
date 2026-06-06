@@ -26,7 +26,7 @@ export class SriQueueProcessor {
     private readonly inventoryService: InventoryService,
     @InjectRepository(SriTransaction)
     private readonly sriTxRepo: Repository<SriTransaction>,
-  ) {}
+  ) { }
 
   @Process('procesar-factura')
   async handleProcesarFactura(job: Job<{ invoiceId: string }>) {
@@ -45,7 +45,7 @@ export class SriQueueProcessor {
     try {
       await this.creditNotesService.procesarConSri(creditNoteId);
       this.logger.log(`Nota de crédito ${creditNoteId} procesada`);
-    } catch (err) {
+    } catch (err: any) {
       this.logger.error(`Error procesando NC ${creditNoteId}: ${err.message}`);
       throw err; // Bull reintentará
     }
@@ -57,7 +57,7 @@ export class SriQueueProcessor {
 
     try {
       await this.invoicesService.procesarConSri(invoiceId);
-    } catch (err) {
+    } catch (err: any) {
       this.logger.error(`Error procesando factura ${invoiceId}: ${err.message}`);
       await this.updateSriTransaction(invoiceId, SriTransactionStatus.ERROR, err.message);
       this.invoiceGateway.emitRejected(invoiceId, {
@@ -82,35 +82,18 @@ export class SriQueueProcessor {
         importeTotal: Number(invoice.importeTotal),
         status: invoice.status,
       });
-      this.logger.log(`Factura ${invoiceId} autorizada: ${invoice.numeroAutorizacion}`);
-      // Descontar inventario solo cuando la factura es AUTORIZADA
-      for (const item of invoice.items) {
-        if (item.productId) {
-          try {
-            const product = await this.productsService.findById(item.productId);
-            if (product.trackInventory) {
-              await this.inventoryService.registrarMovimiento(
-                item.productId,
-                MovementType.SALIDA_VENTA,
-                Number(item.quantity),
-                invoice.id,
-                'Venta factura ' + invoice.secuencial,
-                invoice.secuencial ?? invoice.id,
-              );
-            }
-          } catch (err) {
-            this.logger.warn(`No se pudo registrar movimiento de inventario para producto ${item.productId}: ${err.message}`);
-          }
-        }
-      }
+      this.logger.log(`Factura ${invoiceId} autorizada`);
+
+      // YA NO hay descuento de inventario aquí — se hace al crear
+
       try {
-        console.log('Intentando enviar email para factura:', invoiceId);
-        console.log('Cliente email:', invoice.client?.email);
         await this.mailerService.sendInvoiceEmail(invoiceId);
-      } catch (mailErr) {
-        this.logger.warn(`No se pudo enviar email para factura ${invoiceId}: ${mailErr.message}`);
+      } catch (mailErr: any) {
+        this.logger.warn(`No se pudo enviar email: ${mailErr.message}`);
       }
+
     } else {
+      // RECHAZADO — revertir inventario
       await this.updateSriTransaction(invoiceId, SriTransactionStatus.RECHAZADO, invoice.mensajesRespuesta);
       this.invoiceGateway.emitRejected(invoiceId, {
         invoiceId,
@@ -119,6 +102,27 @@ export class SriQueueProcessor {
         errors: invoice.mensajesRespuesta ?? 'Rechazada por el SRI',
       });
       this.logger.warn(`Factura ${invoiceId} rechazada: ${invoice.mensajesRespuesta}`);
+
+      // ── Reversa de inventario ──
+      for (const item of invoice.items) {
+        if (item.productId) {
+          try {
+            const product = await this.productsService.findById(item.productId);
+            if (product.trackInventory) {
+              await this.inventoryService.registrarMovimiento(
+                item.productId,
+                MovementType.ENTRADA_AJUSTE,  // <-- verifica el nombre exacto en tu enum
+                Number(item.quantity),
+                invoice.id,
+                'Reversa por rechazo SRI factura ' + invoice.secuencial,
+                invoice.secuencial ?? invoice.id,
+              );
+            }
+          } catch (err: any) {
+            this.logger.warn(`No se pudo revertir inventario: ${err.message}`);
+          }
+        }
+      }
     }
   }
 

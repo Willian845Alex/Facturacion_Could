@@ -18,10 +18,14 @@ import { ProductsService } from '../products/products.service';
 import { BranchesService } from '../branches/branches.service';
 import { CashRegisterService } from '../cash-register/cash-register.service';
 import { InvoiceStatus, DocumentType } from '@facturacion-ec/shared';
+import { InventoryService } from '../inventory/inventory.service';
+import { MovementType } from '../inventory/entities/inventory-movement.entity';
+
 
 @Injectable()
 export class InvoicesService {
   private readonly logger = new Logger(InvoicesService.name);
+
 
   constructor(
     @InjectRepository(Invoice) private readonly invoiceRepo: Repository<Invoice>,
@@ -39,6 +43,7 @@ export class InvoicesService {
     private readonly branchesService: BranchesService,
     private readonly cashRegisterService: CashRegisterService,
     private readonly dataSource: DataSource,
+    private readonly inventoryService: InventoryService
   ) { }
 
   async findAll(
@@ -259,7 +264,28 @@ export class InvoicesService {
     const saved = await this.invoiceRepo.save(invoice);
 
     if (!dto.draft) {
-      // Registrar transacción SRI con status PENDIENTE
+      // ── Descontar inventario inmediatamente al facturar ──
+      for (const itemDto of dto.items) {
+        if (itemDto.productId) {
+          try {
+            const product = await this.productsService.findById(itemDto.productId);
+            if (product.trackInventory) {
+              await this.inventoryService.registrarMovimiento(
+                itemDto.productId,
+                MovementType.SALIDA_VENTA,
+                Number(itemDto.quantity),
+                saved.id,
+                'Venta factura ' + saved.secuencial,
+                saved.secuencial ?? saved.id,
+              );
+            }
+          } catch (err: any) {
+            this.logger.warn(`No se pudo registrar movimiento de inventario: ${err.message}`);
+          }
+        }
+      }
+
+      // Registrar transacción SRI...
       await this.sriTxRepo.save(
         this.sriTxRepo.create({
           invoiceId: saved.id,
@@ -272,11 +298,10 @@ export class InvoicesService {
       try {
         await this.sriQueue.add('procesar-factura', { invoiceId: saved.id }, {
           attempts: 3,
-          backoff: { type: 'fixed', delay: 30000 }, // 30s entre reintentos
+          backoff: { type: 'fixed', delay: 30000 },
         });
-      } catch (err) {
-        this.logger.error(`No se pudo encolar la factura ${saved.id} para procesamiento SRI: ${err.message}`);
-        // La factura queda en estado PENDIENTE y puede reintentarse manualmente
+      } catch (err: any) {
+        this.logger.error(`No se pudo encolar la factura ${saved.id}: ${err.message}`);
       }
     }
 

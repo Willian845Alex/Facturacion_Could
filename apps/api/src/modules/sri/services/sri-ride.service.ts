@@ -115,15 +115,15 @@ export class SriRideService implements OnModuleDestroy {
 
   async onModuleDestroy() {
     if (this.browser) {
-      await this.browser.close().catch(() => {});
+      await this.browser.close().catch(() => { });
     }
   }
 
   private async getBrowser() {
     if (!this.browser || !this.browser.connected) {
       this.browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
       });
     }
     return this.browser;
@@ -148,13 +148,13 @@ export class SriRideService implements OnModuleDestroy {
         printBackground: true,
       });
       return Buffer.from(pdf);
-    } catch (err) {
+    } catch (err: any) {
       this.logger.error('Error generando PDF con Puppeteer: ' + err.message);
       // If the browser crashed, clear the instance so next call re-launches
       this.browser = null;
       throw err;
     } finally {
-      if (page) await page.close().catch(() => {});
+      if (page) await page.close().catch(() => { });
     }
   }
 
@@ -175,17 +175,17 @@ export class SriRideService implements OnModuleDestroy {
         printBackground: true,
       });
       return Buffer.from(pdf);
-    } catch (err) {
+    } catch (err: any) {
       this.logger.error('Error generando PDF NC con Puppeteer: ' + err.message);
       this.browser = null;
       throw err;
     } finally {
-      if (page) await page.close().catch(() => {});
+      if (page) await page.close().catch(() => { });
     }
   }
 
   private buildHtmlNC(d: RideNotaCreditoData, qrUrl: string): string {
-    const ncNum     = `${d.estab}-${d.ptoEmi}-${d.secuencial}`;
+    const ncNum = `${d.estab}-${d.ptoEmi}-${d.secuencial}`;
     const isPruebas = d.ambiente === '1';
 
     const logoCell = d.logoBase64
