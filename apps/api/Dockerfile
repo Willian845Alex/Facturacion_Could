@@ -8,22 +8,14 @@ RUN npm install
 WORKDIR /app/apps/api
 RUN npm run build
 
-# Cambiar Alpine por Debian slim
-FROM node:20-slim AS production
+# Usar imagen oficial de Puppeteer que ya tiene Chrome compatible
+FROM ghcr.io/puppeteer/puppeteer:22 AS production
 WORKDIR /app
 
-# Java para el firmador
+USER root
 RUN apt-get update && apt-get install -y \
     openjdk-17-jre-headless \
     --no-install-recommends && rm -rf /var/lib/apt/lists/*
-
-# Chromium en Debian (mucho más estable que Alpine)
-RUN apt-get update && apt-get install -y \
-    chromium \
-    --no-install-recommends && rm -rf /var/lib/apt/lists/*
-
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
