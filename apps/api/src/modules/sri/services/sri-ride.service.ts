@@ -123,7 +123,14 @@ export class SriRideService implements OnModuleDestroy {
     if (!this.browser || !this.browser.connected) {
       this.browser = await puppeteer.launch({
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',    // ← clave para Docker
+          '--disable-gpu',
+          '--no-zygote',
+          '--single-process',           // ← importante en contenedores con poca RAM
+        ],
       });
     }
     return this.browser;
