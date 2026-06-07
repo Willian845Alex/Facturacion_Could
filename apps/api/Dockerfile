@@ -8,14 +8,10 @@ RUN npm install
 WORKDIR /app/apps/api
 RUN npm run build
 
-# Usar imagen oficial de Puppeteer que ya tiene Chrome compatible
-FROM ghcr.io/puppeteer/puppeteer:22 AS production
+FROM node:20-alpine AS production
 WORKDIR /app
 
-USER root
-RUN apt-get update && apt-get install -y \
-    openjdk-17-jre-headless \
-    --no-install-recommends && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache openjdk17-jre
 
 COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
