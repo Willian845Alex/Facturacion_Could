@@ -6,6 +6,6 @@
     "deleteOutDir": true,
     "webpack": true,
     "tsConfigPath": "tsconfig.json",
-    "externalModules": ["pdfmake", "pdfmake/build/pdfmake", "pdfmake/build/vfs_fonts"]
+    "webpackConfigPath": "webpack.config.js"
   }
 }

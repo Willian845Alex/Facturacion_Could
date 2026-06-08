@@ -1,21 +1,20 @@
-import { Injectable, OnModuleDestroy, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import * as QRCode from 'qrcode';
 
-// Puppeteer loaded lazily so the module resolves even if the binary isn't
-// present at startup; the error surfaces only when a PDF is requested.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const puppeteer = require('puppeteer');
+const PdfPrinter = require('pdfmake');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const vfsFonts = require('pdfmake/build/vfs_fonts');
 
-// ─── Data contract ────────────────────────────────────────────────────────────
+// ─── Data contracts ───────────────────────────────────────────────────────────
 
 export interface TarifaIva {
-  tarifa: number;       // 0, 5, 8, 15
-  subtotal: string;     // formatted decimal
-  iva: string;          // formatted decimal
+  tarifa: number;
+  subtotal: string;
+  iva: string;
 }
 
 export interface RideData {
-  // Emisor
   razonSocial: string;
   nombreComercial: string;
   ruc: string;
@@ -24,22 +23,18 @@ export interface RideData {
   logoBase64?: string | null;
   obligadoContabilidad: 'SI' | 'NO';
   contribuyenteRimpe?: string | null;
-  ambiente: string;           // '1'=pruebas  '2'=produccion
+  ambiente: string;
   estab: string;
   ptoEmi: string;
   secuencial: string;
   claveAcceso: string;
   numeroAutorizacion: string;
-  fechaAutorizacion: string;  // DD/MM/YYYY HH:MM:SS
-  fechaEmision: string;       // DD/MM/YYYY
-
-  // Comprador
+  fechaAutorizacion: string;
+  fechaEmision: string;
   razonSocialComprador: string;
   tipoIdentificacion: string;
   identificacionComprador: string;
   direccionComprador?: string;
-
-  // Detalle
   detalles: Array<{
     codigo: string;
     descripcion: string;
@@ -48,22 +43,15 @@ export interface RideData {
     descuento: string;
     precioTotalSinIva: string;
   }>;
-
-  // Totales
-  tarifas: TarifaIva[];     // one entry per distinct IVA rate
+  tarifas: TarifaIva[];
   descuento: string;
   propina: string;
   total: string;
-
-  // Pago
   formaPago: string;
-
-  // Extras
   infoAdicional?: Array<{ nombre: string; valor: string }>;
 }
 
 export interface RideNotaCreditoData {
-  // Emisor
   razonSocial: string;
   nombreComercial: string;
   ruc: string;
@@ -77,20 +65,14 @@ export interface RideNotaCreditoData {
   secuencial: string;
   claveAcceso: string;
   numeroAutorizacion: string;
-  fechaAutorizacion: string;  // DD/MM/YYYY HH:MM:SS
-  fechaEmision: string;       // DD/MM/YYYY
-
-  // Comprador
+  fechaAutorizacion: string;
+  fechaEmision: string;
   razonSocialComprador: string;
   tipoIdentificacion: string;
   identificacionComprador: string;
-
-  // Documento modificado
-  numDocModificado: string;           // 001-001-000000073
-  fechaEmisionDocSustento: string;    // DD/MM/YYYY
+  numDocModificado: string;
+  fechaEmisionDocSustento: string;
   motive: string;
-
-  // Detalle
   detalles: Array<{
     codigo: string;
     descripcion: string;
@@ -99,562 +81,530 @@ export interface RideNotaCreditoData {
     descuento: string;
     precioTotalSinIva: string;
   }>;
-
-  // Totales
   tarifas: TarifaIva[];
   descuento: string;
   total: string;
 }
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const PAYMENT_LABELS: Record<string, string> = {
+  '01': 'SIN UTILIZACIÓN DEL SISTEMA FINANCIERO',
+  '16': 'TARJETA DE DÉBITO',
+  '19': 'TARJETA DE CRÉDITO',
+  '17': 'DINERO ELECTRÓNICO',
+  '18': 'TARJETA PREPAGO',
+  '20': 'OTROS',
+  '15': 'COMPENSACIÓN DE DEUDAS',
+};
+
+const FONTS = {
+  Helvetica: {
+    normal: 'Helvetica',
+    bold: 'Helvetica-Bold',
+    italics: 'Helvetica-Oblique',
+    bolditalics: 'Helvetica-BoldOblique',
+  },
+};
+
+const H_BG = '#d1d5db';
+const ROW_ALT = '#f9fafb';
+const TOTAL_BG = '#f3f4f6';
+const BORDER_COLOR = '#c0c0c0';
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 @Injectable()
-export class SriRideService implements OnModuleDestroy {
+export class SriRideService {
   private readonly logger = new Logger(SriRideService.name);
-  private browser: any = null;
+  private printer: any;
 
-  async onModuleDestroy() {
-    if (this.browser) {
-      await this.browser.close().catch(() => { });
+  constructor() {
+    this.printer = new PdfPrinter(FONTS);
+    // Registrar fuentes virtuales incluidas en pdfmake
+    if (vfsFonts?.pdfMake?.vfs) {
+      (this.printer as any).vfs = vfsFonts.pdfMake.vfs;
     }
   }
 
-  private async getBrowser() {
-    if (!this.browser || !this.browser.connected) {
-      this.browser = await puppeteer.launch({
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',    // ← clave para Docker
-          '--disable-gpu',
-          '--no-zygote',
-          '--single-process',           // ← importante en contenedores con poca RAM
-        ],
-      });
-    }
-    return this.browser;
-  }
+  // ── Public API ──────────────────────────────────────────────────────────────
 
   async generarRidePdf(data: RideData): Promise<Buffer> {
     const qrDataUrl = await QRCode.toDataURL(data.claveAcceso, {
       width: 100, margin: 1, errorCorrectionLevel: 'M',
     });
-
-    const html = this.buildHtml(data, qrDataUrl);
-
-    let page: any;
-    try {
-      const browser = await this.getBrowser();
-      page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'domcontentloaded' });
-      const pdf = await page.pdf({
-        format: 'A4',
-        margin: { top: '10mm', right: '10mm', bottom: '10mm', left: '10mm' },
-        scale: 0.9,
-        printBackground: true,
-      });
-      return Buffer.from(pdf);
-    } catch (err: any) {
-      this.logger.error('Error generando PDF con Puppeteer: ' + err.message);
-      // If the browser crashed, clear the instance so next call re-launches
-      this.browser = null;
-      throw err;
-    } finally {
-      if (page) await page.close().catch(() => { });
-    }
+    const docDef = this.buildFacturaDocDef(data, qrDataUrl);
+    return this.generateBuffer(docDef);
   }
 
   async generarRideNotaCredito(data: RideNotaCreditoData): Promise<Buffer> {
     const qrDataUrl = await QRCode.toDataURL(data.claveAcceso, {
       width: 100, margin: 1, errorCorrectionLevel: 'M',
     });
-    const html = this.buildHtmlNC(data, qrDataUrl);
-    let page: any;
-    try {
-      const browser = await this.getBrowser();
-      page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'domcontentloaded' });
-      const pdf = await page.pdf({
-        format: 'A4',
-        margin: { top: '10mm', right: '10mm', bottom: '10mm', left: '10mm' },
-        scale: 0.9,
-        printBackground: true,
-      });
-      return Buffer.from(pdf);
-    } catch (err: any) {
-      this.logger.error('Error generando PDF NC con Puppeteer: ' + err.message);
-      this.browser = null;
-      throw err;
-    } finally {
-      if (page) await page.close().catch(() => { });
-    }
+    const docDef = this.buildNotaCreditoDocDef(data, qrDataUrl);
+    return this.generateBuffer(docDef);
   }
 
-  private buildHtmlNC(d: RideNotaCreditoData, qrUrl: string): string {
-    const ncNum = `${d.estab}-${d.ptoEmi}-${d.secuencial}`;
-    const isPruebas = d.ambiente === '1';
+  // ── Buffer generator ─────────────────────────────────────────────────────────
 
-    const logoCell = d.logoBase64
-      ? `<img src="${d.logoBase64}" alt="logo" style="max-height:70px;max-width:180px;">`
-      : `<div style="font-size:13px;font-weight:bold;text-align:center;">${this.esc(d.razonSocial)}</div>`;
-
-    const tarifaRows = d.tarifas.map(t => `
-      <tr>
-        <td class="tot-label">SUBTOTAL IVA ${t.tarifa}%</td>
-        <td class="tot-value">$ ${t.subtotal}</td>
-      </tr>
-      ${Number(t.iva) > 0 ? `
-      <tr>
-        <td class="tot-label">IVA ${t.tarifa}%</td>
-        <td class="tot-value">$ ${t.iva}</td>
-      </tr>` : ''}
-    `).join('');
-
-    const detalleRows = d.detalles.map((det, i) => `
-      <tr style="${i % 2 === 1 ? 'background:#f9fafb;' : ''}">
-        <td>${this.esc(det.codigo)}</td>
-        <td>${this.esc(det.descripcion)}</td>
-        <td class="right">${det.cantidad}</td>
-        <td class="right">${det.precioUnitario}</td>
-        <td class="right">${det.descuento}</td>
-        <td class="right">${det.precioTotalSinIva}</td>
-      </tr>
-    `).join('');
-
-    return `<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #111; background: #fff; }
-  table { width: 100%; border-collapse: collapse; }
-  td, th { border: 1px solid #c0c0c0; padding: 3px 5px; vertical-align: top; }
-  .noborder td, .noborder th { border: none; }
-  .th { background: #e8e8e8; font-weight: bold; white-space: nowrap; }
-  .right { text-align: right; }
-  .center { text-align: center; }
-  .bold { font-weight: bold; }
-  .section-header td { background: #d1d5db; font-weight: bold; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; padding: 3px 6px; }
-  .detail-head th { background: #e8e8e8; font-size: 9px; text-align: center; font-weight: bold; }
-  .tot-label { text-align: right; font-size: 10px; background: #f9fafb; padding: 3px 8px; }
-  .tot-value { text-align: right; font-size: 10px; padding: 3px 8px; white-space: nowrap; }
-  .tot-final { font-weight: bold; font-size: 12px; background: #f3f4f6; }
-  .access-key { font-size: 8px; font-family: monospace; text-align: center; word-break: break-all; padding: 4px; border: 1px solid #c0c0c0; margin-top: 4px; }
-  .auth-box { border: 1.5px solid #555; padding: 4px 6px; margin-bottom: 4px; font-size: 8.5px; }
-  .pruebas-badge { background: #fef3c7; border: 1px solid #f59e0b; color: #92400e; font-weight: bold; font-size: 9px; text-align: center; padding: 2px 4px; margin-top: 3px; }
-  .footer-text { text-align: center; font-weight: bold; font-size: 9px; border: 2px solid #374151; padding: 5px; margin-top: 8px; }
-  .spacer { height: 6px; }
-  .nc-badge { background: #fee2e2; border: 1.5px solid #dc2626; color: #991b1b; font-size: 13px; font-weight: bold; padding: 3px 8px; margin-bottom: 4px; }
-</style>
-</head>
-<body>
-
-<!-- CABECERA -->
-<table>
-  <tr>
-    <td style="width:200px;text-align:center;padding:10px;vertical-align:middle;">${logoCell}</td>
-    <td style="padding:6px 10px;">
-      <div class="bold" style="font-size:11px;">${this.esc(d.razonSocial)}</div>
-      <div style="margin-top:2px;">${this.esc(d.nombreComercial)}</div>
-      <div style="margin-top:4px;font-size:9px;"><strong>Dirección Matriz:</strong> ${this.esc(d.dirMatriz)}</div>
-      <div style="margin-top:2px;font-size:9px;"><strong>Dirección Establecimiento:</strong> ${this.esc(d.dirEstablecimiento)}</div>
-      ${d.contribuyenteRimpe ? `<div style="margin-top:2px;font-size:8.5px;color:#374151;"><strong>Contribuyente:</strong> ${this.esc(d.contribuyenteRimpe)}</div>` : ''}
-      <div style="margin-top:2px;font-size:9px;"><strong>Obligado a llevar contabilidad:</strong> NO</div>
-    </td>
-    <td style="width:210px;text-align:center;padding:6px;">
-      <div class="bold" style="font-size:13px;border:1.5px solid #555;padding:3px 8px;margin-bottom:4px;">RUC: ${this.esc(d.ruc)}</div>
-      <div class="nc-badge">NOTA DE CRÉDITO</div>
-      <div class="bold" style="font-size:12px;border:1.5px solid #dc2626;padding:3px 8px;margin-bottom:6px;">No. ${this.esc(ncNum)}</div>
-      <div class="auth-box">
-        <div class="bold" style="font-size:8px;margin-bottom:2px;">NÚMERO DE AUTORIZACIÓN</div>
-        <div style="font-size:7.5px;font-family:monospace;word-break:break-all;">${this.esc(d.numeroAutorizacion)}</div>
-      </div>
-      <div style="font-size:8px;margin-bottom:2px;"><strong>Fecha y Hora de Autorización:</strong><br>${this.esc(d.fechaAutorizacion)}</div>
-      <div style="font-size:8px;margin-bottom:2px;"><strong>Ambiente:</strong> ${isPruebas ? 'PRUEBAS' : 'PRODUCCIÓN'}</div>
-      <div style="font-size:8px;margin-bottom:4px;"><strong>Emisión:</strong> NORMAL</div>
-      <img src="${qrUrl}" alt="QR" style="width:80px;height:80px;">
-      ${isPruebas ? `<div class="pruebas-badge">⚠ AMBIENTE DE PRUEBAS</div>` : ''}
-    </td>
-  </tr>
-</table>
-
-<div class="access-key"><strong>CLAVE DE ACCESO: </strong>${this.esc(d.claveAcceso)}</div>
-<div class="spacer"></div>
-
-<!-- DATOS DEL COMPRADOR -->
-<table>
-  <tr class="section-header"><td colspan="4">DATOS DEL COMPRADOR</td></tr>
-  <tr>
-    <td class="th" style="width:22%;">Razón Social / Nombres</td>
-    <td style="width:28%;">${this.esc(d.razonSocialComprador)}</td>
-    <td class="th" style="width:22%;">Identificación</td>
-    <td style="width:28%;">${this.esc(d.identificacionComprador)} (${this.esc(d.tipoIdentificacion)})</td>
-  </tr>
-  <tr>
-    <td class="th">Fecha Emisión</td>
-    <td>${this.esc(d.fechaEmision)}</td>
-    <td class="th"></td>
-    <td></td>
-  </tr>
-</table>
-<div class="spacer"></div>
-
-<!-- DATOS DEL DOCUMENTO MODIFICADO -->
-<table>
-  <tr class="section-header"><td colspan="4">DATOS DEL DOCUMENTO MODIFICADO</td></tr>
-  <tr>
-    <td class="th" style="width:30%;">Comprobante que modifica</td>
-    <td style="width:20%;">FACTURA</td>
-    <td class="th" style="width:25%;">Número</td>
-    <td style="width:25%;">${this.esc(d.numDocModificado)}</td>
-  </tr>
-  <tr>
-    <td class="th">Fecha emisión doc. sustento</td>
-    <td>${this.esc(d.fechaEmisionDocSustento)}</td>
-    <td class="th">Motivo</td>
-    <td>${this.esc(d.motive)}</td>
-  </tr>
-</table>
-<div class="spacer"></div>
-
-<!-- DETALLE -->
-<table>
-  <tr class="section-header"><td colspan="6">DETALLE</td></tr>
-  <tr class="detail-head">
-    <th style="width:12%;">Cód. Principal</th>
-    <th style="width:*;">Descripción</th>
-    <th style="width:8%;">Cantidad</th>
-    <th style="width:10%;">Precio Unitario</th>
-    <th style="width:9%;">Descuento</th>
-    <th style="width:11%;">Precio Total sin IVA</th>
-  </tr>
-  ${detalleRows}
-</table>
-<div class="spacer"></div>
-
-<!-- TOTALES -->
-<table class="noborder">
-  <tr>
-    <td style="width:55%;vertical-align:top;border:none;"></td>
-    <td style="width:45%;vertical-align:top;border:none;">
-      <table>
-        <tr class="section-header"><td colspan="2">TOTALES</td></tr>
-        ${tarifaRows}
-        ${Number(d.descuento) > 0 ? `<tr><td class="tot-label">DESCUENTO</td><td class="tot-value">$ ${d.descuento}</td></tr>` : ''}
-        <tr>
-          <td class="tot-label tot-final">VALOR TOTAL</td>
-          <td class="tot-value tot-final">$ ${d.total}</td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>
-
-<div class="footer-text">
-  DOCUMENTO GENERADO ELECTRÓNICAMENTE — AUTORIZADO POR EL SERVICIO DE RENTAS INTERNAS
-</div>
-</body>
-</html>`;
+  private generateBuffer(docDef: any): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      try {
+        const pdfDoc = this.printer.createPdfKitDocument(docDef);
+        const chunks: Buffer[] = [];
+        pdfDoc.on('data', (chunk: Buffer) => chunks.push(chunk));
+        pdfDoc.on('end', () => resolve(Buffer.concat(chunks)));
+        pdfDoc.on('error', reject);
+        pdfDoc.end();
+      } catch (err) {
+        reject(err);
+      }
+    });
   }
 
-  // ─── HTML template ──────────────────────────────────────────────────────────
+  // ── Factura DocDef ────────────────────────────────────────────────────────────
 
-  private esc(s: string): string {
-    return s
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-
-  private buildHtml(d: RideData, qrUrl: string): string {
+  private buildFacturaDocDef(d: RideData, qrDataUrl: string): any {
     const invoiceNum = `${d.estab}-${d.ptoEmi}-${d.secuencial}`;
     const isPruebas = d.ambiente === '1';
 
-    // Left column: logo or company name
-    const logoCell = d.logoBase64
-      ? `<img src="${d.logoBase64}" alt="logo" style="max-height:70px;max-width:180px;">`
-      : `<div style="font-size:13px;font-weight:bold;text-align:center;">${this.esc(d.razonSocial)}</div>`;
+    // Logo cell
+    const logoCell: any = d.logoBase64
+      ? { image: d.logoBase64, width: 100, alignment: 'center' }
+      : { text: d.razonSocial, bold: true, fontSize: 9, alignment: 'center' };
 
-    // IVA rates rows
-    const tarifaRows = d.tarifas.map(t => `
-      <tr>
-        <td class="tot-label">SUBTOTAL IVA ${t.tarifa}%</td>
-        <td class="tot-value">$ ${t.subtotal}</td>
-      </tr>
-      ${Number(t.iva) > 0 ? `
-      <tr>
-        <td class="tot-label">IVA ${t.tarifa}%</td>
-        <td class="tot-value">$ ${t.iva}</td>
-      </tr>` : ''}
-    `).join('');
+    // Header right column
+    const headerRight: any[] = [
+      { text: `RUC: ${d.ruc}`, bold: true, fontSize: 9, alignment: 'center', border: [true, true, true, true], margin: [0, 2, 0, 2] },
+      { text: 'FACTURA', bold: true, fontSize: 11, alignment: 'center', border: [true, true, true, true], margin: [0, 2, 0, 2] },
+      { text: `No. ${invoiceNum}`, bold: true, fontSize: 9, alignment: 'center', border: [true, true, true, true], margin: [0, 2, 0, 2] },
+      {
+        stack: [
+          { text: 'NÚMERO DE AUTORIZACIÓN', bold: true, fontSize: 6.5, alignment: 'center' },
+          { text: d.numeroAutorizacion, fontSize: 6, alignment: 'center', font: 'Helvetica' },
+        ],
+        border: [true, true, true, true],
+        margin: [2, 2, 2, 2],
+      },
+      { text: `Fecha Autorización: ${d.fechaAutorizacion}`, fontSize: 7, margin: [0, 1, 0, 1] },
+      { text: `Ambiente: ${isPruebas ? 'PRUEBAS' : 'PRODUCCIÓN'}`, fontSize: 7, margin: [0, 1, 0, 1] },
+      { text: 'Emisión: NORMAL', fontSize: 7, margin: [0, 1, 0, 1] },
+      { image: qrDataUrl, width: 70, alignment: 'center', margin: [0, 4, 0, 0] },
+      ...(isPruebas ? [{
+        text: '⚠ AMBIENTE DE PRUEBAS',
+        bold: true, fontSize: 7, alignment: 'center',
+        color: '#92400e', fillColor: '#fef3c7',
+        margin: [0, 2, 0, 0],
+      }] : []),
+    ];
 
     // Detalle rows
-    const detalleRows = d.detalles.map((det, i) => `
-      <tr style="${i % 2 === 1 ? 'background:#f9fafb;' : ''}">
-        <td>${this.esc(det.codigo)}</td>
-        <td>${this.esc(det.descripcion)}</td>
-        <td class="right">${det.cantidad}</td>
-        <td class="right">${det.precioUnitario}</td>
-        <td class="right">${det.descuento}</td>
-        <td class="right">${det.precioTotalSinIva}</td>
-      </tr>
-    `).join('');
+    const detalleRows = d.detalles.map((det, i) => [
+      { text: det.codigo, fontSize: 7, fillColor: i % 2 === 1 ? ROW_ALT : '#ffffff' },
+      { text: det.descripcion, fontSize: 7, fillColor: i % 2 === 1 ? ROW_ALT : '#ffffff' },
+      { text: det.cantidad, fontSize: 7, alignment: 'right', fillColor: i % 2 === 1 ? ROW_ALT : '#ffffff' },
+      { text: det.precioUnitario, fontSize: 7, alignment: 'right', fillColor: i % 2 === 1 ? ROW_ALT : '#ffffff' },
+      { text: det.descuento, fontSize: 7, alignment: 'right', fillColor: i % 2 === 1 ? ROW_ALT : '#ffffff' },
+      { text: det.precioTotalSinIva, fontSize: 7, alignment: 'right', fillColor: i % 2 === 1 ? ROW_ALT : '#ffffff' },
+    ]);
 
-    // Info adicional rows
-    const infoRows = (d.infoAdicional ?? []).map(f => `
-      <tr>
-        <td class="th">${this.esc(f.nombre)}</td>
-        <td>${this.esc(f.valor)}</td>
-      </tr>
-    `).join('');
+    // Tarifa rows
+    const tarifaRows: any[] = [];
+    for (const t of d.tarifas) {
+      tarifaRows.push([
+        { text: `SUBTOTAL IVA ${t.tarifa}%`, fontSize: 7, alignment: 'right', fillColor: ROW_ALT },
+        { text: `$ ${t.subtotal}`, fontSize: 7, alignment: 'right' },
+      ]);
+      if (Number(t.iva) > 0) {
+        tarifaRows.push([
+          { text: `IVA ${t.tarifa}%`, fontSize: 7, alignment: 'right', fillColor: ROW_ALT },
+          { text: `$ ${t.iva}`, fontSize: 7, alignment: 'right' },
+        ]);
+      }
+    }
+    if (Number(d.descuento) > 0) {
+      tarifaRows.push([
+        { text: 'DESCUENTO', fontSize: 7, alignment: 'right', fillColor: ROW_ALT },
+        { text: `$ ${d.descuento}`, fontSize: 7, alignment: 'right' },
+      ]);
+    }
+    tarifaRows.push([
+      { text: 'VALOR TOTAL', bold: true, fontSize: 8, alignment: 'right', fillColor: TOTAL_BG },
+      { text: `$ ${d.total}`, bold: true, fontSize: 8, alignment: 'right', fillColor: TOTAL_BG },
+    ]);
 
-    const PAYMENT_LABELS: Record<string, string> = {
-      '01': 'SIN UTILIZACIÓN DEL SISTEMA FINANCIERO',
-      '16': 'TARJETA DE DÉBITO', '19': 'TARJETA DE CRÉDITO',
-      '17': 'DINERO ELECTRÓNICO', '18': 'TARJETA PREPAGO',
-      '20': 'OTROS', '15': 'COMPENSACIÓN DE DEUDAS',
+    // Info adicional
+    const infoRows = (d.infoAdicional ?? []).map(inf => [
+      { text: inf.nombre, fontSize: 7, bold: true, fillColor: '#e8e8e8' },
+      { text: inf.valor, fontSize: 7 },
+    ]);
+
+    return {
+      pageSize: 'A4',
+      pageMargins: [28, 28, 28, 28],
+      defaultStyle: { font: 'Helvetica', fontSize: 8 },
+      content: [
+        // ── HEADER ──
+        {
+          table: {
+            widths: [140, '*', 160],
+            body: [[
+              { stack: [logoCell], border: [true, true, true, true], margin: [4, 8, 4, 8], alignment: 'center' },
+              {
+                stack: [
+                  { text: d.razonSocial, bold: true, fontSize: 9 },
+                  { text: d.nombreComercial, fontSize: 8, margin: [0, 2, 0, 0] },
+                  { text: [{ text: 'Dirección Matriz: ', bold: true }, d.dirMatriz], fontSize: 7.5, margin: [0, 3, 0, 0] },
+                  { text: [{ text: 'Dir. Establecimiento: ', bold: true }, d.dirEstablecimiento], fontSize: 7.5, margin: [0, 2, 0, 0] },
+                  ...(d.contribuyenteRimpe ? [{ text: [{ text: 'Contribuyente: ', bold: true }, d.contribuyenteRimpe], fontSize: 7, margin: [0, 2, 0, 0] }] : []),
+                  { text: [{ text: 'Obligado a llevar contabilidad: ', bold: true }, d.obligadoContabilidad], fontSize: 7.5, margin: [0, 2, 0, 0] },
+                ],
+                border: [true, true, true, true],
+                margin: [6, 6, 6, 6],
+              },
+              { stack: headerRight, border: [true, true, true, true], margin: [4, 4, 4, 4] },
+            ]],
+          },
+          layout: { hLineColor: () => BORDER_COLOR, vLineColor: () => BORDER_COLOR },
+        },
+
+        // ── CLAVE ACCESO ──
+        {
+          table: {
+            widths: ['*'],
+            body: [[{ text: `CLAVE DE ACCESO: ${d.claveAcceso}`, fontSize: 7, alignment: 'center', margin: [0, 2, 0, 2] }]],
+          },
+          layout: { hLineColor: () => BORDER_COLOR, vLineColor: () => BORDER_COLOR },
+          margin: [0, 4, 0, 4],
+        },
+
+        // ── DATOS COMPRADOR ──
+        this.sectionTitle('DATOS DEL COMPRADOR'),
+        {
+          table: {
+            widths: ['25%', '25%', '25%', '25%'],
+            body: [
+              [
+                { text: 'Razón Social / Nombres', bold: true, fontSize: 7, fillColor: '#e8e8e8' },
+                { text: d.razonSocialComprador, fontSize: 7 },
+                { text: 'Identificación', bold: true, fontSize: 7, fillColor: '#e8e8e8' },
+                { text: `${d.identificacionComprador} (${d.tipoIdentificacion})`, fontSize: 7 },
+              ],
+              [
+                { text: 'Fecha Emisión', bold: true, fontSize: 7, fillColor: '#e8e8e8' },
+                { text: d.fechaEmision, fontSize: 7 },
+                { text: 'Dirección', bold: true, fontSize: 7, fillColor: '#e8e8e8' },
+                { text: d.direccionComprador ?? '', fontSize: 7 },
+              ],
+            ],
+          },
+          layout: { hLineColor: () => BORDER_COLOR, vLineColor: () => BORDER_COLOR },
+          margin: [0, 0, 0, 4],
+        },
+
+        // ── DETALLE ──
+        this.sectionTitle('DETALLE'),
+        {
+          table: {
+            widths: ['12%', '33%', '8%', '12%', '10%', '15%'],
+            body: [
+              [
+                { text: 'Cód. Principal', bold: true, fontSize: 7, alignment: 'center', fillColor: '#e8e8e8' },
+                { text: 'Descripción', bold: true, fontSize: 7, alignment: 'center', fillColor: '#e8e8e8' },
+                { text: 'Cantidad', bold: true, fontSize: 7, alignment: 'center', fillColor: '#e8e8e8' },
+                { text: 'Precio Unit.', bold: true, fontSize: 7, alignment: 'center', fillColor: '#e8e8e8' },
+                { text: 'Descuento', bold: true, fontSize: 7, alignment: 'center', fillColor: '#e8e8e8' },
+                { text: 'P. Total sin IVA', bold: true, fontSize: 7, alignment: 'center', fillColor: '#e8e8e8' },
+              ],
+              ...detalleRows,
+            ],
+          },
+          layout: { hLineColor: () => BORDER_COLOR, vLineColor: () => BORDER_COLOR },
+          margin: [0, 0, 0, 4],
+        },
+
+        // ── INFO ADICIONAL ──
+        ...(infoRows.length > 0 ? [
+          this.sectionTitle('INFORMACIÓN ADICIONAL'),
+          {
+            table: { widths: ['30%', '70%'], body: infoRows },
+            layout: { hLineColor: () => BORDER_COLOR, vLineColor: () => BORDER_COLOR },
+            margin: [0, 0, 0, 4],
+          },
+        ] : []),
+
+        // ── FORMA DE PAGO + TOTALES ──
+        {
+          columns: [
+            {
+              width: '55%',
+              stack: [
+                this.sectionTitle('FORMA DE PAGO'),
+                {
+                  table: {
+                    widths: ['46%', '22%', '16%', '16%'],
+                    body: [
+                      [
+                        { text: 'Forma de Pago', bold: true, fontSize: 7, alignment: 'center', fillColor: '#e8e8e8' },
+                        { text: 'Valor', bold: true, fontSize: 7, alignment: 'center', fillColor: '#e8e8e8' },
+                        { text: 'Plazo', bold: true, fontSize: 7, alignment: 'center', fillColor: '#e8e8e8' },
+                        { text: 'Tiempo', bold: true, fontSize: 7, alignment: 'center', fillColor: '#e8e8e8' },
+                      ],
+                      [
+                        { text: PAYMENT_LABELS[d.formaPago] ?? d.formaPago, fontSize: 7 },
+                        { text: `$ ${d.total}`, fontSize: 7, alignment: 'right' },
+                        { text: '—', fontSize: 7, alignment: 'center' },
+                        { text: '—', fontSize: 7, alignment: 'center' },
+                      ],
+                    ],
+                  },
+                  layout: { hLineColor: () => BORDER_COLOR, vLineColor: () => BORDER_COLOR },
+                },
+              ],
+            },
+            { width: 8, text: '' },
+            {
+              width: '*',
+              stack: [
+                this.sectionTitle('TOTALES'),
+                {
+                  table: {
+                    widths: ['60%', '40%'],
+                    body: tarifaRows,
+                  },
+                  layout: { hLineColor: () => BORDER_COLOR, vLineColor: () => BORDER_COLOR },
+                },
+              ],
+            },
+          ],
+          margin: [0, 0, 0, 8],
+        },
+
+        // ── FOOTER ──
+        {
+          table: {
+            widths: ['*'],
+            body: [[{
+              text: 'DOCUMENTO GENERADO ELECTRÓNICAMENTE — AUTORIZADO POR EL SERVICIO DE RENTAS INTERNAS',
+              bold: true, fontSize: 7.5, alignment: 'center', margin: [0, 4, 0, 4],
+            }]],
+          },
+          layout: { hLineColor: () => '#374151', vLineColor: () => '#374151', hLineWidth: () => 1.5, vLineWidth: () => 1.5 },
+        },
+      ],
     };
-
-    return `<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 10px;
-    color: #111;
-    background: #fff;
   }
-  table { width: 100%; border-collapse: collapse; }
-  td, th { border: 1px solid #c0c0c0; padding: 3px 5px; vertical-align: top; }
-  .noborder td, .noborder th { border: none; }
-  .th { background: #e8e8e8; font-weight: bold; white-space: nowrap; }
-  .right { text-align: right; }
-  .center { text-align: center; }
-  .bold { font-weight: bold; }
-  .section-header td {
-    background: #d1d5db;
-    font-weight: bold;
-    font-size: 9px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding: 3px 6px;
+
+  // ── Nota Crédito DocDef ───────────────────────────────────────────────────────
+
+  private buildNotaCreditoDocDef(d: RideNotaCreditoData, qrDataUrl: string): any {
+    const ncNum = `${d.estab}-${d.ptoEmi}-${d.secuencial}`;
+    const isPruebas = d.ambiente === '1';
+
+    const logoCell: any = d.logoBase64
+      ? { image: d.logoBase64, width: 100, alignment: 'center' }
+      : { text: d.razonSocial, bold: true, fontSize: 9, alignment: 'center' };
+
+    const headerRight: any[] = [
+      { text: `RUC: ${d.ruc}`, bold: true, fontSize: 9, alignment: 'center', border: [true, true, true, true], margin: [0, 2, 0, 2] },
+      { text: 'NOTA DE CRÉDITO', bold: true, fontSize: 11, alignment: 'center', color: '#991b1b', fillColor: '#fee2e2', border: [true, true, true, true], margin: [0, 2, 0, 2] },
+      { text: `No. ${ncNum}`, bold: true, fontSize: 9, alignment: 'center', border: [true, true, true, true], margin: [0, 2, 0, 2] },
+      {
+        stack: [
+          { text: 'NÚMERO DE AUTORIZACIÓN', bold: true, fontSize: 6.5, alignment: 'center' },
+          { text: d.numeroAutorizacion, fontSize: 6, alignment: 'center' },
+        ],
+        border: [true, true, true, true],
+        margin: [2, 2, 2, 2],
+      },
+      { text: `Fecha Autorización: ${d.fechaAutorizacion}`, fontSize: 7, margin: [0, 1, 0, 1] },
+      { text: `Ambiente: ${isPruebas ? 'PRUEBAS' : 'PRODUCCIÓN'}`, fontSize: 7, margin: [0, 1, 0, 1] },
+      { image: qrDataUrl, width: 70, alignment: 'center', margin: [0, 4, 0, 0] },
+      ...(isPruebas ? [{ text: '⚠ AMBIENTE DE PRUEBAS', bold: true, fontSize: 7, alignment: 'center', color: '#92400e', fillColor: '#fef3c7', margin: [0, 2, 0, 0] }] : []),
+    ];
+
+    const detalleRows = d.detalles.map((det, i) => [
+      { text: det.codigo, fontSize: 7, fillColor: i % 2 === 1 ? ROW_ALT : '#ffffff' },
+      { text: det.descripcion, fontSize: 7, fillColor: i % 2 === 1 ? ROW_ALT : '#ffffff' },
+      { text: det.cantidad, fontSize: 7, alignment: 'right', fillColor: i % 2 === 1 ? ROW_ALT : '#ffffff' },
+      { text: det.precioUnitario, fontSize: 7, alignment: 'right', fillColor: i % 2 === 1 ? ROW_ALT : '#ffffff' },
+      { text: det.descuento, fontSize: 7, alignment: 'right', fillColor: i % 2 === 1 ? ROW_ALT : '#ffffff' },
+      { text: det.precioTotalSinIva, fontSize: 7, alignment: 'right', fillColor: i % 2 === 1 ? ROW_ALT : '#ffffff' },
+    ]);
+
+    const tarifaRows: any[] = [];
+    for (const t of d.tarifas) {
+      tarifaRows.push([
+        { text: `SUBTOTAL IVA ${t.tarifa}%`, fontSize: 7, alignment: 'right', fillColor: ROW_ALT },
+        { text: `$ ${t.subtotal}`, fontSize: 7, alignment: 'right' },
+      ]);
+      if (Number(t.iva) > 0) {
+        tarifaRows.push([
+          { text: `IVA ${t.tarifa}%`, fontSize: 7, alignment: 'right', fillColor: ROW_ALT },
+          { text: `$ ${t.iva}`, fontSize: 7, alignment: 'right' },
+        ]);
+      }
+    }
+    if (Number(d.descuento) > 0) {
+      tarifaRows.push([
+        { text: 'DESCUENTO', fontSize: 7, alignment: 'right', fillColor: ROW_ALT },
+        { text: `$ ${d.descuento}`, fontSize: 7, alignment: 'right' },
+      ]);
+    }
+    tarifaRows.push([
+      { text: 'VALOR TOTAL', bold: true, fontSize: 8, alignment: 'right', fillColor: TOTAL_BG },
+      { text: `$ ${d.total}`, bold: true, fontSize: 8, alignment: 'right', fillColor: TOTAL_BG },
+    ]);
+
+    return {
+      pageSize: 'A4',
+      pageMargins: [28, 28, 28, 28],
+      defaultStyle: { font: 'Helvetica', fontSize: 8 },
+      content: [
+        {
+          table: {
+            widths: [140, '*', 160],
+            body: [[
+              { stack: [logoCell], border: [true, true, true, true], margin: [4, 8, 4, 8], alignment: 'center' },
+              {
+                stack: [
+                  { text: d.razonSocial, bold: true, fontSize: 9 },
+                  { text: d.nombreComercial, fontSize: 8, margin: [0, 2, 0, 0] },
+                  { text: [{ text: 'Dirección Matriz: ', bold: true }, d.dirMatriz], fontSize: 7.5, margin: [0, 3, 0, 0] },
+                  { text: [{ text: 'Dir. Establecimiento: ', bold: true }, d.dirEstablecimiento], fontSize: 7.5, margin: [0, 2, 0, 0] },
+                  ...(d.contribuyenteRimpe ? [{ text: [{ text: 'Contribuyente: ', bold: true }, d.contribuyenteRimpe], fontSize: 7, margin: [0, 2, 0, 0] }] : []),
+                ],
+                border: [true, true, true, true],
+                margin: [6, 6, 6, 6],
+              },
+              { stack: headerRight, border: [true, true, true, true], margin: [4, 4, 4, 4] },
+            ]],
+          },
+          layout: { hLineColor: () => BORDER_COLOR, vLineColor: () => BORDER_COLOR },
+        },
+
+        {
+          table: {
+            widths: ['*'],
+            body: [[{ text: `CLAVE DE ACCESO: ${d.claveAcceso}`, fontSize: 7, alignment: 'center', margin: [0, 2, 0, 2] }]],
+          },
+          layout: { hLineColor: () => BORDER_COLOR, vLineColor: () => BORDER_COLOR },
+          margin: [0, 4, 0, 4],
+        },
+
+        this.sectionTitle('DATOS DEL COMPRADOR'),
+        {
+          table: {
+            widths: ['25%', '25%', '25%', '25%'],
+            body: [
+              [
+                { text: 'Razón Social / Nombres', bold: true, fontSize: 7, fillColor: '#e8e8e8' },
+                { text: d.razonSocialComprador, fontSize: 7 },
+                { text: 'Identificación', bold: true, fontSize: 7, fillColor: '#e8e8e8' },
+                { text: `${d.identificacionComprador} (${d.tipoIdentificacion})`, fontSize: 7 },
+              ],
+              [
+                { text: 'Fecha Emisión', bold: true, fontSize: 7, fillColor: '#e8e8e8' },
+                { text: d.fechaEmision, fontSize: 7 },
+                { text: '', colSpan: 2 }, {},
+              ],
+            ],
+          },
+          layout: { hLineColor: () => BORDER_COLOR, vLineColor: () => BORDER_COLOR },
+          margin: [0, 0, 0, 4],
+        },
+
+        this.sectionTitle('DATOS DEL DOCUMENTO MODIFICADO'),
+        {
+          table: {
+            widths: ['25%', '25%', '25%', '25%'],
+            body: [
+              [
+                { text: 'Comprobante que modifica', bold: true, fontSize: 7, fillColor: '#e8e8e8' },
+                { text: 'FACTURA', fontSize: 7 },
+                { text: 'Número', bold: true, fontSize: 7, fillColor: '#e8e8e8' },
+                { text: d.numDocModificado, fontSize: 7 },
+              ],
+              [
+                { text: 'Fecha emisión doc. sustento', bold: true, fontSize: 7, fillColor: '#e8e8e8' },
+                { text: d.fechaEmisionDocSustento, fontSize: 7 },
+                { text: 'Motivo', bold: true, fontSize: 7, fillColor: '#e8e8e8' },
+                { text: d.motive, fontSize: 7 },
+              ],
+            ],
+          },
+          layout: { hLineColor: () => BORDER_COLOR, vLineColor: () => BORDER_COLOR },
+          margin: [0, 0, 0, 4],
+        },
+
+        this.sectionTitle('DETALLE'),
+        {
+          table: {
+            widths: ['12%', '33%', '8%', '12%', '10%', '15%'],
+            body: [
+              [
+                { text: 'Cód. Principal', bold: true, fontSize: 7, alignment: 'center', fillColor: '#e8e8e8' },
+                { text: 'Descripción', bold: true, fontSize: 7, alignment: 'center', fillColor: '#e8e8e8' },
+                { text: 'Cantidad', bold: true, fontSize: 7, alignment: 'center', fillColor: '#e8e8e8' },
+                { text: 'Precio Unit.', bold: true, fontSize: 7, alignment: 'center', fillColor: '#e8e8e8' },
+                { text: 'Descuento', bold: true, fontSize: 7, alignment: 'center', fillColor: '#e8e8e8' },
+                { text: 'P. Total sin IVA', bold: true, fontSize: 7, alignment: 'center', fillColor: '#e8e8e8' },
+              ],
+              ...detalleRows,
+            ],
+          },
+          layout: { hLineColor: () => BORDER_COLOR, vLineColor: () => BORDER_COLOR },
+          margin: [0, 0, 0, 4],
+        },
+
+        {
+          columns: [
+            { width: '55%', text: '' },
+            { width: 8, text: '' },
+            {
+              width: '*',
+              stack: [
+                this.sectionTitle('TOTALES'),
+                {
+                  table: { widths: ['60%', '40%'], body: tarifaRows },
+                  layout: { hLineColor: () => BORDER_COLOR, vLineColor: () => BORDER_COLOR },
+                },
+              ],
+            },
+          ],
+          margin: [0, 0, 0, 8],
+        },
+
+        {
+          table: {
+            widths: ['*'],
+            body: [[{
+              text: 'DOCUMENTO GENERADO ELECTRÓNICAMENTE — AUTORIZADO POR EL SERVICIO DE RENTAS INTERNAS',
+              bold: true, fontSize: 7.5, alignment: 'center', margin: [0, 4, 0, 4],
+            }]],
+          },
+          layout: { hLineColor: () => '#374151', vLineColor: () => '#374151', hLineWidth: () => 1.5, vLineWidth: () => 1.5 },
+        },
+      ],
+    };
   }
-  .detail-head th {
-    background: #e8e8e8;
-    font-size: 9px;
-    text-align: center;
-    font-weight: bold;
-  }
-  .tot-label { text-align: right; font-size: 10px; background: #f9fafb; padding: 3px 8px; }
-  .tot-value { text-align: right; font-size: 10px; padding: 3px 8px; white-space: nowrap; }
-  .tot-final { font-weight: bold; font-size: 12px; background: #f3f4f6; }
-  .access-key {
-    font-size: 8px;
-    font-family: monospace;
-    text-align: center;
-    word-break: break-all;
-    padding: 4px;
-    border: 1px solid #c0c0c0;
-    margin-top: 4px;
-  }
-  .auth-box {
-    border: 1.5px solid #555;
-    padding: 4px 6px;
-    margin-bottom: 4px;
-    font-size: 8.5px;
-  }
-  .pruebas-badge {
-    background: #fef3c7;
-    border: 1px solid #f59e0b;
-    color: #92400e;
-    font-weight: bold;
-    font-size: 9px;
-    text-align: center;
-    padding: 2px 4px;
-    margin-top: 3px;
-  }
-  .footer-text {
-    text-align: center;
-    font-weight: bold;
-    font-size: 9px;
-    border: 2px solid #374151;
-    padding: 5px;
-    margin-top: 8px;
-  }
-  .spacer { height: 6px; }
-</style>
-</head>
-<body>
 
-<!-- ═══════════════════════════════════════════════════════ CABECERA -->
-<table>
-  <tr>
-    <!-- LOGO / NOMBRE EMPRESA -->
-    <td style="width:200px;text-align:center;padding:10px;vertical-align:middle;">
-      ${logoCell}
-    </td>
+  // ── Helpers ──────────────────────────────────────────────────────────────────
 
-    <!-- DATOS EMISOR -->
-    <td style="padding:6px 10px;">
-      <div class="bold" style="font-size:11px;">${this.esc(d.razonSocial)}</div>
-      <div style="margin-top:2px;">${this.esc(d.nombreComercial)}</div>
-      <div style="margin-top:4px;font-size:9px;">
-        <strong>Dirección Matriz:</strong> ${this.esc(d.dirMatriz)}
-      </div>
-      <div style="margin-top:2px;font-size:9px;">
-        <strong>Dirección Establecimiento:</strong> ${this.esc(d.dirEstablecimiento)}
-      </div>
-      ${d.contribuyenteRimpe ? `
-      <div style="margin-top:2px;font-size:8.5px;color:#374151;">
-        <strong>Contribuyente:</strong> ${this.esc(d.contribuyenteRimpe)}
-      </div>` : ''}
-      <div style="margin-top:2px;font-size:9px;">
-        <strong>Obligado a llevar contabilidad:</strong> ${d.obligadoContabilidad}
-      </div>
-    </td>
-
-    <!-- TIPO DOC / NÚMERO / AUTORIZACIÓN / QR -->
-    <td style="width:210px;text-align:center;padding:6px;">
-      <div class="bold" style="font-size:13px;border:1.5px solid #555;padding:3px 8px;margin-bottom:4px;">
-        RUC: ${this.esc(d.ruc)}
-      </div>
-      <div class="bold" style="font-size:13px;border:1.5px solid #555;padding:3px 8px;margin-bottom:4px;">
-        FACTURA
-      </div>
-      <div class="bold" style="font-size:12px;border:1.5px solid #555;padding:3px 8px;margin-bottom:6px;">
-        No. ${this.esc(invoiceNum)}
-      </div>
-
-      <div class="auth-box">
-        <div class="bold" style="font-size:8px;margin-bottom:2px;">NÚMERO DE AUTORIZACIÓN</div>
-        <div style="font-size:7.5px;font-family:monospace;word-break:break-all;">
-          ${this.esc(d.numeroAutorizacion)}
-        </div>
-      </div>
-      <div style="font-size:8px;margin-bottom:2px;">
-        <strong>Fecha y Hora de Autorización:</strong><br>${this.esc(d.fechaAutorizacion)}
-      </div>
-      <div style="font-size:8px;margin-bottom:2px;">
-        <strong>Ambiente:</strong> ${isPruebas ? 'PRUEBAS' : 'PRODUCCIÓN'}
-      </div>
-      <div style="font-size:8px;margin-bottom:4px;">
-        <strong>Emisión:</strong> NORMAL
-      </div>
-
-      <img src="${qrUrl}" alt="QR" style="width:80px;height:80px;">
-
-      ${isPruebas ? `<div class="pruebas-badge">⚠ AMBIENTE DE PRUEBAS</div>` : ''}
-    </td>
-  </tr>
-</table>
-
-<!-- CLAVE DE ACCESO -->
-<div class="access-key">
-  <strong>CLAVE DE ACCESO: </strong>${this.esc(d.claveAcceso)}
-</div>
-
-<div class="spacer"></div>
-
-<!-- ═══════════════════════════════════════════════════ DATOS COMPRADOR -->
-<table>
-  <tr class="section-header"><td colspan="4">DATOS DEL COMPRADOR</td></tr>
-  <tr>
-    <td class="th" style="width:22%;">Razón Social / Nombres</td>
-    <td style="width:28%;">${this.esc(d.razonSocialComprador)}</td>
-    <td class="th" style="width:22%;">Identificación</td>
-    <td style="width:28%;">${this.esc(d.identificacionComprador)} (${this.esc(d.tipoIdentificacion)})</td>
-  </tr>
-  <tr>
-    <td class="th">Fecha Emisión</td>
-    <td>${this.esc(d.fechaEmision)}</td>
-    <td class="th">Dirección</td>
-    <td>${this.esc(d.direccionComprador ?? '')}</td>
-  </tr>
-</table>
-
-<div class="spacer"></div>
-
-<!-- ═══════════════════════════════════════════════════ DETALLE -->
-<table>
-  <tr class="section-header"><td colspan="6">DETALLE</td></tr>
-  <tr class="detail-head">
-    <th style="width:12%;">Cód. Principal</th>
-    <th style="width:*;">Descripción</th>
-    <th style="width:8%;">Cantidad</th>
-    <th style="width:10%;">Precio Unitario</th>
-    <th style="width:9%;">Descuento</th>
-    <th style="width:11%;">Precio Total sin IVA</th>
-  </tr>
-  ${detalleRows}
-</table>
-
-<div class="spacer"></div>
-
-<!-- ═════════════════════════════════════════ INFO ADICIONAL (opcional) -->
-${(d.infoAdicional?.length ?? 0) > 0 ? `
-<table>
-  <tr class="section-header"><td colspan="2">INFORMACIÓN ADICIONAL</td></tr>
-  ${infoRows}
-</table>
-<div class="spacer"></div>
-` : ''}
-
-<!-- ═══════════════════════════════════════════ TOTALES + FORMA DE PAGO -->
-<table class="noborder">
-  <tr>
-    <!-- FORMA DE PAGO -->
-    <td style="width:55%;vertical-align:top;">
-      <table>
-        <tr class="section-header"><td colspan="4">FORMA DE PAGO</td></tr>
-        <tr>
-          <th style="width:40%;">Forma de Pago</th>
-          <th style="width:20%;">Valor</th>
-          <th style="width:20%;">Plazo</th>
-          <th style="width:20%;">Tiempo</th>
-        </tr>
-        <tr>
-          <td>${PAYMENT_LABELS[d.formaPago] ?? this.esc(d.formaPago)}</td>
-          <td class="right">$ ${d.total}</td>
-          <td class="center">—</td>
-          <td class="center">—</td>
-        </tr>
-      </table>
-    </td>
-
-    <!-- TOTALES -->
-    <td style="width:45%;vertical-align:top;">
-      <table>
-        <tr class="section-header"><td colspan="2">TOTALES</td></tr>
-        ${tarifaRows}
-        ${Number(d.descuento) > 0 ? `
-        <tr>
-          <td class="tot-label">DESCUENTO</td>
-          <td class="tot-value">$ ${d.descuento}</td>
-        </tr>` : ''}
-        ${Number(d.propina) > 0 ? `
-        <tr>
-          <td class="tot-label">PROPINA</td>
-          <td class="tot-value">$ ${d.propina}</td>
-        </tr>` : ''}
-        <tr>
-          <td class="tot-label tot-final">VALOR TOTAL</td>
-          <td class="tot-value tot-final">$ ${d.total}</td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>
-
-<!-- ═══════════════════════════════════════════════════════════ PIE -->
-<div class="footer-text">
-  DOCUMENTO GENERADO ELECTRÓNICAMENTE — AUTORIZADO POR EL SERVICIO DE RENTAS INTERNAS
-</div>
-
-</body>
-</html>`;
+  private sectionTitle(title: string): any {
+    return {
+      table: {
+        widths: ['*'],
+        body: [[{
+          text: title.toUpperCase(),
+          bold: true,
+          fontSize: 7.5,
+          fillColor: H_BG,
+          margin: [4, 2, 4, 2],
+        }]],
+      },
+      layout: { hLineColor: () => BORDER_COLOR, vLineColor: () => BORDER_COLOR },
+      margin: [0, 0, 0, 0],
+    };
   }
 }
