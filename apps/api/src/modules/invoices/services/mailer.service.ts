@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as nodemailer from 'nodemailer';
 import { InvoicesService } from '../invoices.service';
 import { SettingsService } from '../../settings/settings.service';
 import { SriRideService } from '../../sri/services/sri-ride.service';
@@ -10,7 +9,8 @@ import { Setting } from '../../settings/entities/setting.entity';
 @Injectable()
 export class MailerService {
   private readonly logger = new Logger(MailerService.name);
-  private readonly transporter: nodemailer.Transporter | null;
+  private readonly apiKey: string | null;
+  private readonly apiUrl = 'https://api.brevo.com/v3/smtp/email';
 
   constructor(
     private readonly config: ConfigService,
@@ -18,30 +18,14 @@ export class MailerService {
     private readonly settingsService: SettingsService,
     private readonly rideService: SriRideService,
   ) {
-    const host = config.get<string>('SMTP_HOST');
-    console.log('SMTP config:', {
-      host,
-      user: config.get('SMTP_USER'),
-      hasPass: !!config.get('SMTP_PASS'),
-    });
-    if (!host) {
-      this.logger.warn('SMTP_HOST no configurado — envío de emails deshabilitado');
-      this.transporter = null;
-      return;
+    this.apiKey = config.get<string>('BREVO_API_KEY') ?? null;
+    if (!this.apiKey) {
+      this.logger.warn('BREVO_API_KEY no configurado — envío de emails deshabilitado');
     }
-    this.transporter = nodemailer.createTransport({
-      host,
-      port: Number(config.get<string>('SMTP_PORT') ?? 587),
-      secure: config.get<string>('SMTP_SECURE') === 'true',
-      auth: {
-        user: config.get<string>('SMTP_USER'),
-        pass: config.get<string>('SMTP_PASS'),
-      },
-    });
   }
 
   async sendInvoiceEmail(invoiceId: string): Promise<void> {
-    if (!this.transporter) return;
+    if (!this.apiKey) return;
 
     const settings = await this.settingsService.get();
     if (!settings.sendInvoiceEmail) return;
@@ -54,61 +38,61 @@ export class MailerService {
       day: '2-digit', month: '2-digit', year: 'numeric',
     });
 
-    const from =
-      this.config.get<string>('SMTP_FROM') ??
-      `"${settings.nombreComercial}" <${this.config.get('SMTP_USER')}>`;
+    const senderEmail = this.config.get<string>('SMTP_USER') ?? this.config.get<string>('BREVO_SENDER_EMAIL') ?? '';
+    const senderName = settings.nombreComercial;
 
-    // Generate RIDE PDF silently (don't fail email if PDF generation fails)
+    // Generar PDF
     let ridePdf: Buffer | null = null;
     try {
       ridePdf = await this.invoicesService.getRide(invoiceId);
-    } catch (pdfErr) {
+    } catch (pdfErr: any) {
       this.logger.warn(`No se pudo generar RIDE para email ${invoiceId}: ${pdfErr.message}`);
     }
 
-    const attachments: nodemailer.SendMailOptions['attachments'] = [];
+    const attachments: any[] = [];
     if (ridePdf) {
       attachments.push({
-        filename: `FACTURA-${invoiceNum}.pdf`,
-        content: ridePdf,
-        contentType: 'application/pdf',
+        name: `FACTURA-${invoiceNum}.pdf`,
+        content: ridePdf.toString('base64'),
       });
     }
     if (inv.xmlAutorizado) {
       attachments.push({
-        filename: `FACTURA-${invoiceNum}.xml`,
-        content: inv.xmlAutorizado,
-        contentType: 'application/xml; charset=utf-8',
+        name: `FACTURA-${invoiceNum}.xml`,
+        content: Buffer.from(inv.xmlAutorizado).toString('base64'),
       });
     }
 
-    await this.transporter.sendMail({
-      from,
-      to: inv.client.email,
-      subject: `Factura electrónica No. ${invoiceNum} - ${settings.nombreComercial}`,
-      html: this.buildHtml(settings, inv, invoiceNum, fechaStr),
-      attachments,
-    });
+    const payload: any = {
+      sender: { name: senderName, email: senderEmail },
+      to: [{ email: inv.client.email, name: inv.client.name }],
+      subject: `Factura electrónica No. ${invoiceNum} - ${senderName}`,
+      htmlContent: this.buildHtml(settings, inv, invoiceNum, fechaStr),
+    };
 
+    if (attachments.length > 0) {
+      payload.attachment = attachments;
+    }
+
+    await this.sendViaApi(payload);
     this.logger.log(`Email enviado → ${inv.client.email}  factura ${invoiceNum}`);
   }
 
   async sendCreditNoteEmail(opts: {
     clientEmail: string;
     clientName: string;
-    ncSequential: string;     // "001-001-000000001"
-    facturaNum: string;       // "001-001-000000073"
+    ncSequential: string;
+    facturaNum: string;
     total: number;
     motive: string;
     xmlAutorizado: string | null;
     ridePdf?: Buffer | null;
   }): Promise<void> {
-    if (!this.transporter) return;
+    if (!this.apiKey) return;
 
     const settings = await this.settingsService.get();
-    const from =
-      this.config.get<string>('SMTP_FROM') ??
-      `"${settings.nombreComercial}" <${this.config.get('SMTP_USER')}>`;
+    const senderEmail = this.config.get<string>('SMTP_USER') ?? this.config.get<string>('BREVO_SENDER_EMAIL') ?? '';
+    const senderName = settings.nombreComercial;
 
     const esc = (s: string) => s
       .replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -177,34 +161,55 @@ export class MailerService {
 </table>
 </body></html>`;
 
-    const attachments: nodemailer.SendMailOptions['attachments'] = [];
+    const attachments: any[] = [];
     if (opts.ridePdf) {
       attachments.push({
-        filename: `NOTA-CREDITO-${opts.ncSequential}.pdf`,
-        content: opts.ridePdf,
-        contentType: 'application/pdf',
+        name: `NOTA-CREDITO-${opts.ncSequential}.pdf`,
+        content: opts.ridePdf.toString('base64'),
       });
     }
     if (opts.xmlAutorizado) {
       attachments.push({
-        filename: `NC-${opts.ncSequential}.xml`,
-        content: opts.xmlAutorizado,
-        contentType: 'application/xml; charset=utf-8',
+        name: `NC-${opts.ncSequential}.xml`,
+        content: Buffer.from(opts.xmlAutorizado).toString('base64'),
       });
     }
 
-    await this.transporter.sendMail({
-      from,
-      to: opts.clientEmail,
-      subject: `Nota de crédito No. ${opts.ncSequential} - ${settings.nombreComercial}`,
-      html,
-      attachments,
-    });
+    const payload: any = {
+      sender: { name: senderName, email: senderEmail },
+      to: [{ email: opts.clientEmail, name: opts.clientName }],
+      subject: `Nota de crédito No. ${opts.ncSequential} - ${senderName}`,
+      htmlContent: html,
+    };
 
+    if (attachments.length > 0) {
+      payload.attachment = attachments;
+    }
+
+    await this.sendViaApi(payload);
     this.logger.log(`Email NC enviado → ${opts.clientEmail}  NC ${opts.ncSequential}`);
   }
 
-  // ─── helpers ────────────────────────────────────────────────────────────────
+  // ── API caller ───────────────────────────────────────────────────────────────
+
+  private async sendViaApi(payload: any): Promise<void> {
+    const response = await fetch(this.apiUrl, {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': this.apiKey!,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Brevo API error ${response.status}: ${error}`);
+    }
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────────────────────
 
   private formatNum(inv: Invoice): string {
     if (!inv.branch) return inv.secuencial ?? '';
@@ -233,38 +238,22 @@ export class MailerService {
 <title>Factura electrónica</title>
 </head>
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
-
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;">
   <tr><td align="center">
     <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-
-      <!-- CABECERA -->
       <tr>
         <td style="background:#1d4ed8;padding:28px 32px;text-align:center;">
           ${logoBlock}
-          <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.3px;">
-            ${this.escape(s.nombreComercial)}
-          </h1>
-          <p style="margin:6px 0 0;color:#bfdbfe;font-size:13px;">
-            RUC: ${this.escape(s.ruc)}
-          </p>
+          <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">${this.escape(s.nombreComercial)}</h1>
+          <p style="margin:6px 0 0;color:#bfdbfe;font-size:13px;">RUC: ${this.escape(s.ruc)}</p>
         </td>
       </tr>
-
-      <!-- CUERPO -->
       <tr>
         <td style="padding:32px 32px 24px;">
-
-          <p style="margin:0 0 20px;font-size:15px;color:#374151;">
-            Estimado/a <strong>${this.escape(clientName)}</strong>,
-          </p>
+          <p style="margin:0 0 20px;font-size:15px;color:#374151;">Estimado/a <strong>${this.escape(clientName)}</strong>,</p>
           <p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.6;">
             Adjunto encontrará su <strong>factura electrónica autorizada por el SRI</strong>.
-            Este documento tiene plena validez tributaria y puede ser descargado desde
-            el portal del SRI con el número de autorización indicado a continuación.
           </p>
-
-          <!-- TABLA RESUMEN -->
           <table width="100%" cellpadding="0" cellspacing="0"
             style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-bottom:24px;font-size:14px;">
             <thead>
@@ -276,11 +265,11 @@ export class MailerService {
             <tbody>
               <tr>
                 <td style="padding:10px 16px;color:#374151;border-bottom:1px solid #f3f4f6;">Número de factura</td>
-                <td style="padding:10px 16px;text-align:right;font-family:monospace;color:#111827;font-weight:600;border-bottom:1px solid #f3f4f6;">${this.escape(invoiceNum)}</td>
+                <td style="padding:10px 16px;text-align:right;font-family:monospace;font-weight:600;border-bottom:1px solid #f3f4f6;">${this.escape(invoiceNum)}</td>
               </tr>
               <tr style="background:#fafafa;">
                 <td style="padding:10px 16px;color:#374151;border-bottom:1px solid #f3f4f6;">Fecha de emisión</td>
-                <td style="padding:10px 16px;text-align:right;color:#111827;border-bottom:1px solid #f3f4f6;">${fechaStr}</td>
+                <td style="padding:10px 16px;text-align:right;border-bottom:1px solid #f3f4f6;">${fechaStr}</td>
               </tr>
               <tr>
                 <td style="padding:10px 16px;color:#374151;border-bottom:1px solid #f3f4f6;">Total</td>
@@ -288,54 +277,37 @@ export class MailerService {
               </tr>
               <tr style="background:#fafafa;">
                 <td style="padding:10px 16px;color:#374151;">Nro. autorización SRI</td>
-                <td style="padding:10px 16px;text-align:right;font-family:monospace;font-size:11px;color:#374151;word-break:break-all;">${this.escape(authDisplay)}</td>
+                <td style="padding:10px 16px;text-align:right;font-family:monospace;font-size:11px;word-break:break-all;">${this.escape(authDisplay)}</td>
               </tr>
             </tbody>
           </table>
-
-          <!-- NOTA LEGAL -->
           <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 16px;margin-bottom:28px;">
             <p style="margin:0;font-size:13px;color:#166534;">
               ✅ <strong>Documento válido como comprobante tributario.</strong>
-              Este comprobante electrónico ha sido autorizado por el Servicio de Rentas Internas del Ecuador.
             </p>
           </div>
-
-          <!-- BOTÓN SRI -->
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
               <td align="center">
-                <a href="${sriPortalUrl}"
-                  style="display:inline-block;background:#1d4ed8;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;border-radius:8px;">
+                <a href="${sriPortalUrl}" style="display:inline-block;background:#1d4ed8;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;border-radius:8px;">
                   Ver factura en el portal SRI →
                 </a>
               </td>
             </tr>
           </table>
-
         </td>
       </tr>
-
-      <!-- PIE -->
       <tr>
         <td style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:20px 32px;text-align:center;">
-          <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:#374151;">
-            ${this.escape(s.razonSocial)}
-          </p>
-          <p style="margin:0 0 4px;font-size:12px;color:#6b7280;">
-            RUC: ${this.escape(s.ruc)} &nbsp;|&nbsp; ${this.escape(s.dirMatriz)}
-          </p>
+          <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:#374151;">${this.escape(s.razonSocial)}</p>
+          <p style="margin:0 0 4px;font-size:12px;color:#6b7280;">RUC: ${this.escape(s.ruc)} &nbsp;|&nbsp; ${this.escape(s.dirMatriz)}</p>
           ${s.telefono ? `<p style="margin:0;font-size:12px;color:#6b7280;">Tel: ${this.escape(s.telefono)}</p>` : ''}
-          <p style="margin:12px 0 0;font-size:11px;color:#9ca3af;">
-            Este mensaje fue generado automáticamente. Por favor no responda a este correo.
-          </p>
+          <p style="margin:12px 0 0;font-size:11px;color:#9ca3af;">Mensaje generado automáticamente.</p>
         </td>
       </tr>
-
     </table>
   </td></tr>
 </table>
-
 </body>
 </html>`;
   }
