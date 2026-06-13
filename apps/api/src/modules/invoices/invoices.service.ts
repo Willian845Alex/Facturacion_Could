@@ -20,6 +20,7 @@ import { CashRegisterService } from '../cash-register/cash-register.service';
 import { InvoiceStatus, DocumentType } from '@facturacion-ec/shared';
 import { InventoryService } from '../inventory/inventory.service';
 import { MovementType } from '../inventory/entities/inventory-movement.entity';
+import { SriReceptionService } from '../sri/sri-reception.service';
 
 
 @Injectable()
@@ -43,7 +44,8 @@ export class InvoicesService {
     private readonly branchesService: BranchesService,
     private readonly cashRegisterService: CashRegisterService,
     private readonly dataSource: DataSource,
-    private readonly inventoryService: InventoryService
+    private readonly inventoryService: InventoryService,
+    private readonly sriReceptionService: SriReceptionService
   ) { }
 
   async findAll(
@@ -411,41 +413,30 @@ export class InvoicesService {
     // Enviar al SRI
     const recepcion = await this.sriSoapService.enviarComprobante(xmlFirmado, ambiente);
     this.logger.log(`Recepción SRI estado: ${recepcion.estado}`);
-    this.logger.log(`Recepción SRI completa: ${JSON.stringify(recepcion, null, 2)}`);
 
-    if (recepcion.estado === 'DEVUELTA') {
-      // DEVUELTA = el SRI rechazó el comprobante. Nunca tendrá autorización.
-      // La única excepción es el identificador 70 (clave ya registrada):
-      // en ese caso el documento YA fue enviado antes y podría estar autorizado.
-      const mensajes = (recepcion as any).comprobantes?.mensajes?.mensaje;
-      const mensajesArr: any[] = mensajes
-        ? Array.isArray(mensajes) ? mensajes : [mensajes]
-        : [];
+    const resultado = this.sriReceptionService.interpretarRecepcion(recepcion);
 
-      this.logger.warn(`Mensajes SRI: ${JSON.stringify(mensajesArr, null, 2)}`);
+    switch (resultado.tipo) {
+      case 'RECIBIDA':
+      case 'CONSULTAR_AUTORIZACION':
+        // Continuar al polling de autorización
+        break;
 
-      const soloError70 = mensajesArr.length > 0 &&
-        mensajesArr.every((m: any) => m?.identificador === '70');
+      case 'REINTENTAR':
+        // Lanzar error para que Bull reintente el job automáticamente
+        throw new Error(`SRI error transitorio — reintentando: ${resultado.resumen}`);
 
-      if (!soloError70) {
-        // Error real: rechazar y no intentar autorizar
-        const resumen = mensajesArr
-          .map((m: any) => `[${m?.identificador}] ${m?.mensaje} - ${m?.informacionAdicional ?? ''}`)
-          .join(' | ');
+      case 'RECHAZAR':
         await this.invoiceRepo.update(invoiceId, {
           status: InvoiceStatus.RECHAZADO,
-          mensajesRespuesta: resumen || JSON.stringify(recepcion),
+          mensajesRespuesta: resultado.resumen,
         });
+        // alerta: true significa error de negocio grave (RUC clausurado, etc.)
+        // Aquí puedes agregar en el futuro: notificación al admin, Slack, etc.
+        if (resultado.alerta) {
+          this.logger.error(`ALERTA NEGOCIO — factura ${invoiceId}: ${resultado.resumen}`);
+        }
         return;
-      }
-      // Si solo es error 70, el comprobante ya existe: continuar a autorizar
-      this.logger.log('Clave ya registrada en SRI (error 70), consultando autorización...');
-    } else if (recepcion.estado !== 'RECIBIDA') {
-      await this.invoiceRepo.update(invoiceId, {
-        status: InvoiceStatus.RECHAZADO,
-        mensajesRespuesta: JSON.stringify(recepcion),
-      });
-      return;
     }
 
 

@@ -10,6 +10,9 @@ import * as fs from 'fs';
 const JAR_PATH = process.env.SIGNER_JAR_PATH ||
   path.resolve(__dirname, '../../../../../signer/signer.jar');
 
+// const JAR_PATH =
+//   'C:/xampp/htdocs/Factura_Sri/apps/signer/target/signer-1.0.0-jar-with-dependencies.jar';
+
 @Injectable()
 export class JavaSignerService {
   private readonly logger = new Logger(JavaSignerService.name);
@@ -17,11 +20,15 @@ export class JavaSignerService {
   constructor(private readonly settingsService: SettingsService) { }
 
   async firmarXml(xmlStr: string): Promise<string> {
+    this.logger.log(`SIGNER_JAR_PATH ENV = ${process.env.SIGNER_JAR_PATH}`);
     if (!fs.existsSync(JAR_PATH)) {
       throw new InternalServerErrorException(
         `JAR de firma no encontrado en: ${JAR_PATH}. Ejecuta: cd apps/signer && mvn clean package`,
       );
     }
+
+    this.logger.log(`ENV SIGNER_JAR_PATH: ${process.env.SIGNER_JAR_PATH}`);
+    this.logger.log(`JAR_PATH: ${JAR_PATH}`);
 
     const { p12Buffer, password } = await this.settingsService.getCertificadoDecrypted();
     const p12Base64 = p12Buffer.toString('base64');
