@@ -110,6 +110,36 @@ export class InvoicesService {
     return inv;
   }
 
+  async getRetryData(invoiceId: string) {
+    const inv = await this.findById(invoiceId);
+
+    if (inv.status !== InvoiceStatus.RECHAZADO) {
+      throw new BadRequestException('Solo se pueden repetir facturas rechazadas');
+    }
+
+    return {
+      clientId: inv.clientId,
+      branchId: inv.branchId,
+      formaPago: inv.formaPago,
+      items: inv.items.map(it => ({
+        productId: it.productId,
+        code: it.code,
+        description: it.description,
+        quantity: Number(it.quantity),
+        unitPrice: Number(it.unitPrice),
+        discount: Number(it.discount),
+        ivaRate: it.ivaRate,
+      })),
+      client: inv.client ? {
+        id: inv.client.id,
+        name: inv.client.name,
+        identification: inv.client.identification,
+        identificationType: (inv.client as any).identificationType,
+        email: inv.client.email,
+      } : null,
+    };
+  }
+
   async getTicket(id: string) {
     const inv = await this.findById(id);
     const s = await this.settingsService.get();
@@ -187,6 +217,8 @@ export class InvoicesService {
         seq,
       );
     }
+
+
 
     // Calcular totales
     const items: InvoiceItem[] = [];

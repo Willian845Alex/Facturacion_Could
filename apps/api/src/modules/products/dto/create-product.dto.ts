@@ -54,4 +54,12 @@ export class CreateProductDto {
   @IsOptional()
   @Type(() => Number)
   minStock?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  managesBatches?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
 }

@@ -45,6 +45,9 @@ export class Product {
   @Column({ default: false })
   trackInventory: boolean;
 
+  @Column({ default: false })
+  managesBatches: boolean;
+
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   minStock: number;
 

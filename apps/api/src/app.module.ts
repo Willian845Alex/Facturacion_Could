@@ -18,13 +18,15 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { SriModule } from './modules/sri/sri.module';
 import { CashRegisterModule } from './modules/cash-register/cash-register.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { ProductBatchesModule } from './modules/product-batches/product-batches.module';
+
 
 async function seedWithRetry(seedFn: () => Promise<void>, retries = 5) {
   for (let i = 0; i < retries; i++) {
     try {
       await seedFn();
       return;
-    } catch (err) {
+    } catch (err: any) {
       if (i < retries - 1) {
         console.log(`Seed falló, reintentando en 3s... (${i + 1}/${retries})`);
         await new Promise(r => setTimeout(r, 3000));
@@ -81,6 +83,7 @@ async function seedWithRetry(seedFn: () => Promise<void>, retries = 5) {
     SriModule,
     CashRegisterModule,
     DashboardModule,
+    ProductBatchesModule,
   ],
 })
 export class AppModule implements OnApplicationBootstrap {

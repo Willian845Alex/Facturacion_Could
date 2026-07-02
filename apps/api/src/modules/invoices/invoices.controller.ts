@@ -14,11 +14,12 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 @ApiBearerAuth()
 @UseGuards(AuthGuard('jwt'))
 @Controller('invoices')
+
 export class InvoicesController {
   constructor(
     private readonly service: InvoicesService,
     private readonly mailerService: MailerService,
-  ) {}
+  ) { }
 
   @Get()
   findAll(
@@ -45,16 +46,7 @@ export class InvoicesController {
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteDraft(@Param('id') id: string) { return this.service.deleteDraft(id); }
 
-  @Get(':id')
-  async findById(@Param('id') id: string) {
-    const invoice = await this.service.findById(id);
-    console.log('findById response:', {
-      id: invoice.id,
-      status: invoice.status,
-      numeroAutorizacion: invoice.numeroAutorizacion,
-    });
-    return invoice;
-  }
+
 
   @Post()
   create(@Body() dto: CreateInvoiceDto, @CurrentUser() user: any) {
@@ -92,5 +84,21 @@ export class InvoicesController {
       'Content-Disposition': `attachment; filename="factura-${inv.claveAcceso}.xml"`,
     });
     res.status(HttpStatus.OK).send(xml);
+  }
+
+  @Get(':id/retry-data')
+  getRetryData(@Param('id') id: string) {
+    return this.service.getRetryData(id);
+  }
+
+  @Get(':id')
+  async findById(@Param('id') id: string) {
+    const invoice = await this.service.findById(id);
+    console.log('findById response:', {
+      id: invoice.id,
+      status: invoice.status,
+      numeroAutorizacion: invoice.numeroAutorizacion,
+    });
+    return invoice;
   }
 }

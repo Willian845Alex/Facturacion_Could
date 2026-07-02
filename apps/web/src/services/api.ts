@@ -103,6 +103,9 @@ export const invoicesApi = {
     api.get(`/invoices/${id}/xml`, { responseType: 'blob' }),
   getTicketData: (id: string) => api.get(`/invoices/${id}/ticket`),
   sendEmail: (id: string) => api.post(`/invoices/${id}/send-email`),
+  getRetryData: (id: string) => api.get(`/invoices/${id}/retry-data`),
+  getTicket: (id: string) => api.get(`/invoices/${id}/ticket`),
+
 };
 
 export const clientsApi = {
@@ -282,3 +285,14 @@ export interface InvoiceSriEvent {
   // rejected
   errors?: string;
 }
+
+export const productBatchesApi = {
+  findByProduct: (productId: string) => api.get(`/product-batches/product/${productId}`),
+  create: (data: unknown) => api.post('/product-batches', data),
+  update: (id: string, data: unknown) => api.patch(`/product-batches/${id}`, data),
+  deactivate: (id: string) => api.delete(`/product-batches/${id}`),
+  expiringSoon: (days?: number) => api.get('/product-batches/expiring-soon', { params: days ? { days } : {} }),
+  expired: () => api.get('/product-batches/expired'),
+  getTicket: (id: string) => api.get(`/invoices/${id}/ticket`),
+
+};

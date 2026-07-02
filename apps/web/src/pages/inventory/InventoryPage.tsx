@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { inventoryApi, productsApi, openBlob } from '../../services/api'
+import { inventoryApi, productsApi, productBatchesApi, openBlob } from '../../services/api'
 import Pagination from '../../components/ui/Pagination'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -12,6 +12,7 @@ interface Product {
   cost?: number
   unit?: string
   trackInventory: boolean
+  managesBatches?: boolean
   isActive: boolean
 }
 
@@ -35,24 +36,24 @@ const TYPE_LABELS: Record<string, string> = {
   ENTRADA_COMPRA: 'Entrada compra',
   ENTRADA_AJUSTE: 'Ajuste entrada',
   ENTRADA_DEVOLUCION: 'Devolución',
-  SALIDA_VENTA:   'Salida venta',
-  SALIDA_MERMA:   'Merma / pérdida',
-  SALIDA_AJUSTE:  'Ajuste salida',
+  SALIDA_VENTA: 'Salida venta',
+  SALIDA_MERMA: 'Merma / pérdida',
+  SALIDA_AJUSTE: 'Ajuste salida',
   ENTRADA: 'Entrada',
-  SALIDA:  'Salida',
-  AJUSTE:  'Ajuste',
+  SALIDA: 'Salida',
+  AJUSTE: 'Ajuste',
 }
 
 const TYPE_COLORS: Record<string, string> = {
   ENTRADA_COMPRA: 'bg-green-100 text-green-700',
   ENTRADA_AJUSTE: 'bg-green-100 text-green-700',
   ENTRADA_DEVOLUCION: 'bg-green-100 text-green-700',
-  SALIDA_VENTA:   'bg-blue-100 text-blue-700',
-  SALIDA_MERMA:   'bg-red-100 text-red-700',
-  SALIDA_AJUSTE:  'bg-red-100 text-red-700',
+  SALIDA_VENTA: 'bg-blue-100 text-blue-700',
+  SALIDA_MERMA: 'bg-red-100 text-red-700',
+  SALIDA_AJUSTE: 'bg-red-100 text-red-700',
   ENTRADA: 'bg-green-100 text-green-700',
-  SALIDA:  'bg-red-100 text-red-700',
-  AJUSTE:  'bg-amber-100 text-amber-700',
+  SALIDA: 'bg-red-100 text-red-700',
+  AJUSTE: 'bg-amber-100 text-amber-700',
 }
 
 function fmt(n: number | string | undefined) {
@@ -106,11 +107,10 @@ export default function InventoryPage() {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`px-4 pb-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === tab.key
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+              className={`px-4 pb-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === tab.key
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
             >
               {tab.label}
             </button>
@@ -120,7 +120,7 @@ export default function InventoryPage() {
 
       <div>
         {activeTab === 'movimientos' && <MovimientosTab />}
-        {activeTab === 'kardex'      && <KardexTab />}
+        {activeTab === 'kardex' && <KardexTab />}
       </div>
     </div>
   )
@@ -161,17 +161,37 @@ function MovimientosTab() {
   const totalItems: number = data?.total ?? 0
   const totalPages: number = data?.totalPages ?? 1
 
+
   const entryMutation = useMutation({
-    mutationFn: (dto: unknown) => inventoryApi.createEntry(dto),
-    onSuccess: (res) => {
+    mutationFn: async (dto: any) => {
+      // dto puede traer { batchNumber, expirationDate } si el producto maneja lotes
+      const { batchNumber, expirationDate, ...entryDto } = dto
+      const res = await inventoryApi.createEntry(entryDto)
+      const movement = res.data as Movement
+
+      // Si vino info de lote, registrar el lote asociado a este ingreso
+      if (batchNumber && expirationDate) {
+        await productBatchesApi.create({
+          productId: entryDto.productId,
+          batchNumber,
+          expirationDate,
+          quantity: entryDto.quantity,
+          unitCost: entryDto.unitCost,
+          notes: `Vinculado a movimiento de inventario`,
+        })
+      }
+      return movement
+    },
+    onSuccess: (m) => {
       queryClient.invalidateQueries({ queryKey: ['inventory-movements'] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
-      const m = res.data as Movement
+      queryClient.invalidateQueries({ queryKey: ['product-batches'] })
       setSuccessMsg(`Entrada registrada. Stock actual: ${fmt(m.stockAfter)} ${m.product?.unit ?? ''}`)
       setShowModal(null)
       setTimeout(() => setSuccessMsg(null), 4000)
     },
   })
+
 
   const exitMutation = useMutation({
     mutationFn: (dto: unknown) => inventoryApi.createExit(dto),
@@ -393,17 +413,17 @@ interface KardexRow {
   detail: string
   document: string
   entrada: { qty: number; unitCost: number; total: number } | null
-  salida:  { qty: number; unitCost: number; total: number } | null
-  saldo:   { qty: number; promedio: number; total: number }
+  salida: { qty: number; unitCost: number; total: number } | null
+  saldo: { qty: number; promedio: number; total: number }
 }
 interface KardexData {
-  product:      { id: string; code: string; name: string; unit: string; stock: number; minStock: number }
-  empresa:      { razonSocial: string; ruc: string } | null
-  from:         string | null
-  to:           string | null
+  product: { id: string; code: string; name: string; unit: string; stock: number; minStock: number }
+  empresa: { razonSocial: string; ruc: string } | null
+  from: string | null
+  to: string | null
   saldoInicial: { qty: number; promedio: number; total: number }
-  rows:         KardexRow[]
-  totals:       { entradaQty: number; entradaValue: number; salidaQty: number; salidaValue: number; saldoFinal: { qty: number; promedio: number; total: number } }
+  rows: KardexRow[]
+  totals: { entradaQty: number; entradaValue: number; salidaQty: number; salidaValue: number; saldoFinal: { qty: number; promedio: number; total: number } }
 }
 interface SummaryItem {
   id: string; code: string; name: string; unit: string
@@ -411,7 +431,7 @@ interface SummaryItem {
 }
 
 function fmtMoney(n: number) { return n.toFixed(4) }
-function fmtQty(n: number)   { return n % 1 === 0 ? n.toFixed(0) : n.toFixed(2) }
+function fmtQty(n: number) { return n % 1 === 0 ? n.toFixed(0) : n.toFixed(2) }
 
 function KardexTab() {
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
@@ -535,10 +555,10 @@ function KardexResumen({ onSelect }: { onSelect: (id: string) => void }) {
 function KardexDetallado({ productId, onBack }: { productId: string; onBack: () => void }) {
   const now = new Date()
   const firstOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-  const lastOfMonth  = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()}`
+  const lastOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()}`
 
   const [from, setFrom] = useState(firstOfMonth)
-  const [to,   setTo]   = useState(lastOfMonth)
+  const [to, setTo] = useState(lastOfMonth)
 
   const { data, isLoading } = useQuery({
     queryKey: ['kardex-detail', productId, from, to],
@@ -766,6 +786,10 @@ function MovementForm({
   const [unitCost, setUnitCost] = useState('')
   const [reference, setReference] = useState('')
 
+  // ── Campos de lote (solo aplican en entrada + producto con managesBatches) ──
+  const [batchNumber, setBatchNumber] = useState('')
+  const [expirationDate, setExpirationDate] = useState('')
+
   const { data: productsData } = useQuery({
     queryKey: ['products', search],
     queryFn: () => productsApi.findAll({ search: search || undefined }).then(r => ((r.data as any)?.data ?? r.data) as Product[]),
@@ -777,21 +801,28 @@ function MovementForm({
   const isEntrada = mode === 'entrada'
   const qty = Number(quantity)
   const stockExceeded = !isEntrada && selectedProduct !== null && qty > Number(selectedProduct.stock)
+  const requiresBatch = isEntrada && selectedProduct?.managesBatches === true
+
+  // Si el producto requiere lote, exigimos número y fecha antes de habilitar el submit
+  const batchIncomplete = requiresBatch && (!batchNumber.trim() || !expirationDate)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedProduct || stockExceeded) return
+    if (!selectedProduct || stockExceeded || batchIncomplete) return
     onSubmit({
       productId: selectedProduct.id,
       quantity: qty,
       unitCost: unitCost ? Number(unitCost) : undefined,
       reference: reference || undefined,
+      ...(requiresBatch
+        ? { batchNumber: batchNumber.trim(), expirationDate }
+        : {}),
     })
   }
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <h2 className={`text-lg font-bold ${isEntrada ? 'text-green-700' : 'text-red-700'}`}>
           {isEntrada ? '+ Registrar entrada' : '− Registrar salida'}
         </h2>
@@ -806,14 +837,24 @@ function MovementForm({
             {selectedProduct ? (
               <div className="mt-1 flex items-center justify-between border border-gray-200 rounded-lg px-3 py-2 bg-gray-50">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">{selectedProduct.name}</p>
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {selectedProduct.name}
+                    {selectedProduct.managesBatches && (
+                      <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-100 text-violet-700">
+                        Maneja lotes
+                      </span>
+                    )}
+                  </p>
                   <p className="text-xs text-gray-400 font-mono">
                     {selectedProduct.code} — Stock: {fmt(selectedProduct.stock)} {selectedProduct.unit ?? ''}
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => { setSelectedProduct(null); setSearch(''); setQuantity('') }}
+                  onClick={() => {
+                    setSelectedProduct(null); setSearch(''); setQuantity('')
+                    setBatchNumber(''); setExpirationDate('')
+                  }}
                   className="text-xs text-gray-400 hover:text-gray-600 ml-3 shrink-0"
                 >
                   Cambiar
@@ -844,6 +885,11 @@ function MovementForm({
                           <span>
                             <span className="font-medium text-gray-900">{p.name}</span>
                             <span className="ml-1.5 text-xs text-gray-400 font-mono">({p.code})</span>
+                            {p.managesBatches && (
+                              <span className="ml-1.5 inline-flex items-center px-1 py-0.5 rounded text-[9px] font-medium bg-violet-100 text-violet-700">
+                                Lotes
+                              </span>
+                            )}
                           </span>
                           <span className="text-xs text-gray-500 shrink-0">
                             Stock: {fmt(p.stock)} {p.unit ?? ''}
@@ -869,9 +915,8 @@ function MovementForm({
               min="1"
               value={quantity}
               onChange={e => setQuantity(e.target.value)}
-              className={`w-full border rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                stockExceeded ? 'border-red-400' : 'border-gray-200'
-              }`}
+              className={`w-full border rounded-lg px-3 py-2 text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-blue-500 ${stockExceeded ? 'border-red-400' : 'border-gray-200'
+                }`}
               placeholder="0"
             />
             {selectedProduct && !isEntrada && (
@@ -906,6 +951,44 @@ function MovementForm({
             </div>
           )}
 
+          {/* ── Lote y caducidad — solo si el producto seleccionado lo requiere ── */}
+          {requiresBatch && (
+            <div className="border border-violet-200 bg-violet-50/60 rounded-lg p-3 space-y-2.5">
+              <p className="text-xs font-semibold text-violet-700">
+                Este producto maneja lotes — completa los datos del lote que ingresa
+              </p>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-xs font-medium text-gray-600">
+                    N° de lote <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    required
+                    value={batchNumber}
+                    onChange={e => setBatchNumber(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"
+                    placeholder="Ej: L2026-045"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600">
+                    Fecha caducidad <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    required
+                    type="date"
+                    value={expirationDate}
+                    onChange={e => setExpirationDate(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"
+                  />
+                </div>
+              </div>
+              <p className="text-[11px] text-violet-500">
+                La cantidad del lote será la misma cantidad de esta entrada ({quantity || 0} {selectedProduct?.unit ?? ''})
+              </p>
+            </div>
+          )}
+
           {/* Referencia */}
           <div>
             <label className="text-xs font-medium text-gray-600">
@@ -932,10 +1015,9 @@ function MovementForm({
             </button>
             <button
               type="submit"
-              disabled={loading || !selectedProduct || stockExceeded || !quantity}
-              className={`flex-1 text-white rounded-lg py-2 text-sm font-medium disabled:opacity-50 ${
-                isEntrada ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
-              }`}
+              disabled={loading || !selectedProduct || stockExceeded || !quantity || batchIncomplete}
+              className={`flex-1 text-white rounded-lg py-2 text-sm font-medium disabled:opacity-50 ${isEntrada ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
+                }`}
             >
               {loading ? 'Guardando...' : isEntrada ? 'Registrar entrada' : 'Registrar salida'}
             </button>
