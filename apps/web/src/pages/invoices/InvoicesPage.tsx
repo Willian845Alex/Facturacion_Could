@@ -120,9 +120,9 @@ function fmtDate(iso: string) {
 function ProductSearchBar({ onSelect }: { onSelect: (p: Product) => void }) {
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
-  const [barcode, setBarcode] = useState('')
+  // const [barcode, setBarcode] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
-  const barcodeRef = useRef<HTMLInputElement>(null)
+  // const barcodeRef = useRef<HTMLInputElement>(null)
 
   const { data } = useQuery({
     queryKey: ['prod-search', q],
@@ -139,20 +139,20 @@ function ProductSearchBar({ onSelect }: { onSelect: (p: Product) => void }) {
     inputRef.current?.focus()
   }
 
-  const handleBarcode = async (code: string) => {
-    if (!code.trim()) return
-    try {
-      const res = await productsApi.findAll({ search: code.trim() })
-      const list = (((res.data as any)?.data ?? res.data) as Product[]).filter(p => p.isActive)
-      if (list.length === 1) {
-        onSelect(list[0])
-        setBarcode('')
-        barcodeRef.current?.focus()
-      }
-    } catch {
-      // silencioso
-    }
-  }
+  // const handleBarcode = async (code: string) => {
+  //   if (!code.trim()) return
+  //   try {
+  //     const res = await productsApi.findAll({ search: code.trim() })
+  //     const list = (((res.data as any)?.data ?? res.data) as Product[]).filter(p => p.isActive)
+  //     if (list.length === 1) {
+  //       onSelect(list[0])
+  //       setBarcode('')
+  //       barcodeRef.current?.focus()
+  //     }
+  //   } catch {
+  //     // silencioso
+  //   }
+  // }
 
   return (
     <div className="flex gap-3">
