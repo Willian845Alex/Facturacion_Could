@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { clientsApi } from '../../services/api'
 import Pagination from '../../components/ui/Pagination'
+import { AlertTriangle } from 'lucide-react'
 
 interface Customer {
   id: string
@@ -10,6 +11,7 @@ interface Customer {
   name: string
   email: string | null
   phone: string | null
+  address: string | null
   isActive: boolean
 }
 
@@ -18,6 +20,18 @@ const ID_LABELS: Record<string, string> = {
   '04': 'RUC',
   '06': 'Pasaporte',
   '07': 'Consumidor Final',
+}
+
+interface ConfirmModalProps {
+  isOpen: boolean
+  title: string
+  message: string
+  confirmText?: string
+  cancelText?: string
+  confirmColor?: 'red' | 'green'
+  loading?: boolean
+  onConfirm: () => void
+  onCancel: () => void
 }
 
 const PAGE_SIZE = 50
@@ -40,6 +54,9 @@ export default function ClientsPage() {
   const [page, setPage] = useState(1)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Customer | null>(null)
+  const [confirmProduct, setConfirmProduct] = useState<Customer | null>(null)
+
+
 
   useEffect(() => { setPage(1) }, [search])
 
@@ -70,6 +87,14 @@ export default function ClientsPage() {
       setEditing(null)
       setShowForm(false)
     },
+  })
+
+  const toggleStatusMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      isActive
+        ? clientsApi.deactivate(id)
+        : clientsApi.update(id, { isActive: true }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['customers'] }),
   })
 
   const handleEdit = (c: Customer) => {
@@ -111,6 +136,7 @@ export default function ClientsPage() {
               <th className="text-left px-4 py-3 font-medium text-gray-600">Identificación</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Nombre</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Email</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Direccion</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Teléfono</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Estado</th>
               <th className="px-4 py-3"></th>
@@ -135,23 +161,36 @@ export default function ClientsPage() {
                   </td>
                   <td className="px-4 py-3 font-medium text-gray-900">{c.name}</td>
                   <td className="px-4 py-3 text-gray-500">{c.email ?? '—'}</td>
+                  <td className="px-4 py-3 text-gray-500">{c.address ?? '—'}</td>
                   <td className="px-4 py-3 text-gray-500">{c.phone ?? '—'}</td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-                      c.isActive
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-gray-100 text-gray-500'
-                    }`}>
+                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${c.isActive
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-gray-100 text-gray-500'
+                      }`}>
                       {c.isActive ? 'Activo' : 'Inactivo'}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => handleEdit(c)}
-                      className="text-blue-600 hover:underline text-xs"
-                    >
-                      Editar
-                    </button>
+                    <div className="flex items-center justify-end gap-3">
+
+
+                      <button
+                        onClick={() => handleEdit(c)}
+                        className="text-blue-600 hover:underline text-xs"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => setConfirmProduct(c)}
+                        className={`text-xs hover:underline ${c.isActive
+                          ? 'text-gray-400 hover:text-red-500'
+                          : 'text-emerald-600 hover:text-emerald-800'
+                          }`}
+                      >
+                        {c.isActive ? 'Desactivar' : 'Reactivar'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -183,6 +222,99 @@ export default function ClientsPage() {
         />
       )}
 
+      <ConfirmModal
+        isOpen={!!confirmProduct}
+        title={
+          confirmProduct?.isActive
+            ? 'Desactivar producto'
+            : 'Reactivar producto'
+        }
+        message={
+          confirmProduct
+            ? confirmProduct.isActive
+              ? `¿Estás seguro de que deseas desactivar "${confirmProduct.name}"? El Cliente dejará de estar disponible para su uso, pero podrás reactivarlo más adelante.`
+              : `¿Estás seguro de que deseas reactivar "${confirmProduct.name}"?`
+            : ''
+        }
+        confirmText={
+          confirmProduct?.isActive ? 'Sí, desactivar' : 'Sí, reactivar'
+        }
+        confirmColor={confirmProduct?.isActive ? 'red' : 'green'}
+        loading={toggleStatusMutation.isPending}
+        onCancel={() => setConfirmProduct(null)}
+        onConfirm={() => {
+          if (!confirmProduct) return
+
+          toggleStatusMutation.mutate(
+            {
+              id: confirmProduct.id,
+              isActive: confirmProduct.isActive,
+            },
+            {
+              onSuccess: () => {
+                setConfirmProduct(null)
+              },
+            }
+          )
+        }}
+      />
+
+    </div>
+  )
+}
+
+export function ConfirmModal({
+  isOpen,
+  title,
+  message,
+  confirmText = 'Aceptar',
+  cancelText = 'Cancelar',
+  confirmColor = 'red',
+  loading = false,
+  onConfirm,
+  onCancel,
+}: ConfirmModalProps) {
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="w-full max-w-md rounded-xl bg-white shadow-xl animate-in fade-in zoom-in-95">
+        <div className="p-6">
+          <div className="flex items-center gap-3">
+            <div className="rounded-full bg-red-100 p-3">
+              <AlertTriangle className="h-6 w-6 text-red-600" />
+            </div>
+
+            <div>
+              <h2 className="text-lg font-semibold">{title}</h2>
+              <p className="mt-1 text-sm text-gray-600">{message}</p>
+            </div>
+          </div>
+
+          <div className="mt-6 flex justify-end gap-3">
+            <button
+              onClick={onCancel}
+              disabled={loading}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-100 disabled:opacity-50"
+            >
+              {cancelText}
+            </button>
+
+            <button
+              onClick={onConfirm}
+              disabled={loading}
+              className={`rounded-lg px-4 py-2 text-sm font-medium text-white transition
+                ${confirmColor === 'red'
+                  ? 'bg-red-600 hover:bg-red-700'
+                  : 'bg-emerald-600 hover:bg-emerald-700'
+                }
+                disabled:opacity-50`}
+            >
+              {loading ? 'Procesando...' : confirmText}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -251,7 +383,7 @@ function CustomerForm({
             <input
               required
               value={form.name}
-              onChange={e => set('name', e.target.value)}
+              onChange={e => set('name', e.target.value.toUpperCase())}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"
               placeholder="Juan Pérez"
             />
@@ -265,6 +397,16 @@ function CustomerForm({
               onChange={e => set('email', e.target.value)}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"
               placeholder="juan@email.com"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-gray-600">Direccion</label>
+            <input
+              value={form.address}
+              onChange={e => set('address', e.target.value.toUpperCase())}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"
+              placeholder="Av. Amazonas y Naciones Unidas" required
             />
           </div>
 

@@ -956,7 +956,7 @@ function ProductForm({
             <input
               required
               value={form.name}
-              onChange={e => set('name', e.target.value)}
+              onChange={e => set('name', e.target.value.toUpperCase())}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"
               placeholder="Nombre del producto o servicio"
             />

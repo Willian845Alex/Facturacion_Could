@@ -3,17 +3,18 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { clientsApi, productsApi, branchesApi, invoicesApi, cashRegisterApi, creditNotesApi, openBlob, type InvoiceSriEvent } from '../../services/api'
 import Pagination from '../../components/ui/Pagination'
 import { useAuthStore } from '../../store/auth.store'
+import { Banknote, CreditCard, Landmark, } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
 interface Client {
   id: string; name: string; identification: string
-  identificationType?: string; email?: string
+  identificationType?: string; email?: string; address?: string
 }
 interface Product {
   id: string; code: string; name: string; price: number
   ivaRate: number; unit?: string; isActive: boolean
-  stockQuantity?: number; auxiliaryCode?: string
+  stock?: number; auxiliaryCode?: string
 }
 interface Branch {
   id: string; name: string; codigoEstablecimiento: string
@@ -34,11 +35,11 @@ interface HistorialInvoice {
 interface CreatedInvoice {
   id: string; secuencial: string; importeTotal: number; status: string
   branch?: { codigoEstablecimiento: string; puntoEmision: string }
-  client?: { name: string }
+  client?: { name: string; email?: string; }
 }
 interface DraftInvoice {
   id: string; createdAt: string; importeTotal: number; formaPago: string; branchId: string
-  client: { id: string; name: string; identification: string; identificationType?: string; email?: string } | null
+  client: { id: string; name: string; identification: string; identificationType?: string; email?: string, address?: string } | null
   items: Array<{ productId: string; code: string; description: string; quantity: number; unitPrice: number; discount: number; ivaRate: number }>
 }
 
@@ -46,30 +47,21 @@ interface DraftInvoice {
 
 const PAYMENT_OPTIONS = [
   {
-    code: '01', label: 'Efectivo',
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-      </svg>
-    ),
+    code: '01',
+    label: 'Efectivo',
+    icon: <Banknote size={20} />
   },
   {
-    code: '19', label: 'Tarjeta',
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-      </svg>
-    ),
+    code: '19',
+    label: 'Tarjeta',
+    icon: <CreditCard size={20} />
   },
   {
-    code: '17', label: 'Transferencia',
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-      </svg>
-    ),
-  },
-]
+    code: '17',
+    label: 'Transferencia',
+    icon: <Landmark size={20} />
+  }
+];
 
 const STATUS_LABELS: Record<string, string> = {
   BORRADOR: 'Borrador', PENDIENTE: 'Pendiente', AUTORIZADO: 'Autorizada',
@@ -208,6 +200,11 @@ function ProductSearchBar({ onSelect }: { onSelect: (p: Product) => void }) {
                   <p className="text-sm font-bold text-slate-900 tabular-nums">${Number(p.price).toFixed(2)}</p>
                   <p className="text-[11px] text-slate-400">IVA {p.ivaRate}%</p>
                 </div>
+                <div className="text-right shrink-0">
+                  <p className="text-xs text-gray-500">
+                    Stock: {Number(p.stock).toFixed(2)}UN
+                  </p>
+                </div>
               </button>
             ))}
             {results.length > 10 && (
@@ -219,7 +216,7 @@ function ProductSearchBar({ onSelect }: { onSelect: (p: Product) => void }) {
         )}
       </div>
 
-      <div className="relative flex-1">
+      {/* <div className="relative flex-1">
         <svg className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 22V12h6v10" />
@@ -234,7 +231,7 @@ function ProductSearchBar({ onSelect }: { onSelect: (p: Product) => void }) {
           placeholder="Código de barras…"
           className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 focus:bg-white transition-all"
         />
-      </div>
+      </div> */}
     </div>
   )
 }
@@ -258,6 +255,7 @@ function QuickCreateClientModal({ initialSearch, onClose, onCreated }: {
   const [name, setName] = useState(initialSearch)
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
+  const [address, setAddress] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
 
@@ -285,6 +283,7 @@ function QuickCreateClientModal({ initialSearch, onClose, onCreated }: {
         name: name.trim(),
         ...(email.trim() ? { email: email.trim() } : {}),
         ...(phone.trim() ? { phone: phone.trim() } : {}),
+        ...(address.trim() ? { phone: address.trim() } : {}),
       })
       onCreated(res.data as Client)
     } catch (e: unknown) {
@@ -331,7 +330,7 @@ function QuickCreateClientModal({ initialSearch, onClose, onCreated }: {
             <label className="block text-xs font-medium text-slate-500 mb-1">Nombre completo / Razón social *</label>
             <input
               value={name}
-              onChange={e => { setName(e.target.value); setErrors(prev => ({ ...prev, name: '' })) }}
+              onChange={e => { setName(e.target.value.toUpperCase()); setErrors(prev => ({ ...prev, name: '' })) }}
               placeholder="Nombre o razón social"
               className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 bg-white ${errors.name ? 'border-rose-400' : 'border-slate-200'}`}
             />
@@ -344,15 +343,29 @@ function QuickCreateClientModal({ initialSearch, onClose, onCreated }: {
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 type="email"
-                placeholder="opcional"
+                placeholder="obligatorio"
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 bg-white"
+                required
               />
             </div>
+
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-1">Teléfono</label>
               <input
                 value={phone}
                 onChange={e => setPhone(e.target.value)}
+                placeholder="opcional"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 bg-white"
+              />
+            </div>
+          </div>
+          <div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Direccion</label>
+              <input
+                value={address}
+                onChange={e => setAddress(e.target.value)}
+                type="address"
                 placeholder="opcional"
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 bg-white"
               />
@@ -1252,6 +1265,19 @@ function SuccessModal({ invoice, isDraft, sriStatus, sriEvent, onClose, onRetry 
   //   const t = setInterval(() => setElapsed(s => s + 1), 1000)
   //   return () => clearInterval(t)
   // }, [sriStatus])
+
+  const clientEmail = invoice.client?.email
+  const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
+
+  useEffect(() => {
+    if (sriStatus === 'authorized' && clientEmail && emailStatus === 'idle') {
+      setEmailStatus('sending')
+      invoicesApi.sendEmail(invoice.id)
+        .then(() => setEmailStatus('sent'))
+        .catch(() => setEmailStatus('error'))
+    }
+  }, [sriStatus])
+
   if (isDraft) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -1307,6 +1333,78 @@ function SuccessModal({ invoice, isDraft, sriStatus, sriEvent, onClose, onRetry 
               Enviando al SRI en segundo plano...
             </div>
           </>
+        )}
+
+        {clientEmail && (
+          <div className="mt-5 border-t border-gray-200 pt-4">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+              Estado de la factura
+            </p>
+
+            <div className="space-y-3">
+
+              {/* Estado SRI */}
+              <div className="flex items-center gap-3">
+                <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                  <svg className="w-3 h-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+
+                <span className="text-sm text-gray-700">
+                  Factura autorizada por el SRI
+                </span>
+              </div>
+
+              {/* Estado Email */}
+              <div className="flex items-center gap-3">
+                {emailStatus === 'sent' && (
+                  <>
+                    <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                      <svg className="w-3 h-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+
+                    <span className="text-sm text-gray-700">
+                      Factura enviada a <span className="font-semibold">{clientEmail}</span>
+                    </span>
+                  </>
+                )}
+
+                {emailStatus === 'sending' && (
+                  <>
+                    <div className="w-5 h-5 rounded-full bg-yellow-100 flex items-center justify-center shrink-0">
+                      <svg className="w-3 h-3 text-yellow-600 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                      </svg>
+                    </div>
+
+                    <span className="text-sm text-gray-700">
+                      Enviando factura a <span className="font-semibold">{clientEmail}</span>...
+                    </span>
+                  </>
+                )}
+
+                {emailStatus === 'error' && (
+                  <>
+                    <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                      <svg className="w-3 h-3 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </div>
+
+                    <span className="text-sm text-gray-700">
+                      No fue posible enviar la factura a <span className="font-semibold">{clientEmail}</span>
+                    </span>
+                  </>
+                )}
+
+              </div>
+
+            </div>
+          </div>
         )}
 
         {/* AUTHORIZED */}
@@ -1395,6 +1493,7 @@ function SuccessModal({ invoice, isDraft, sriStatus, sriEvent, onClose, onRetry 
             </div>
           </>
         )}
+
 
       </div>
     </div>
@@ -1741,7 +1840,6 @@ export default function InvoicesPage() {
         unitPrice: Number(p.price),
         discount: 0,
         ivaRate: Number(p.ivaRate),
-        stockQuantity: p.stockQuantity,
         unit: p.unit,
       }])
     }
@@ -1870,6 +1968,7 @@ export default function InvoicesPage() {
       identification: draft.client.identification,
       identificationType: draft.client.identificationType,
       email: draft.client.email,
+      address: draft.client.address,
     } : null)
     setFormaPago(draft.formaPago ?? '01')
     setItems((draft.items as DraftInvoice['items']).map(item => ({
@@ -1907,23 +2006,53 @@ export default function InvoicesPage() {
 
       {/* ─── Cash register status bar ─── */}
       {!cashLoading && (
-        <div className={`shrink-0 px-4 py-2 flex items-center justify-between text-xs ${cashIsOpen ? 'bg-green-600 text-white' : 'bg-amber-500 text-white'
-          }`}>
-          <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${cashIsOpen ? 'bg-white/70 animate-pulse' : 'bg-white/70'}`} />
-            {cashIsOpen
-              ? `Caja abierta desde ${new Date(cashRegister!.openedAt).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })} — ${cashRegister!.totalInvoices} facturas · $${Number(cashRegister!.totalSales).toFixed(2)} en ventas`
-              : 'Caja cerrada — Abre la caja para facturar'
-            }
+        <div className="shrink-0 p-4 pb-0">
+          <div className={`px-5 py-3 flex flex-wrap items-center justify-between gap-3 text-sm rounded-xl font-medium shadow-sm transition-all duration-300 ${cashIsOpen
+            ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white'
+            : 'bg-gradient-to-r from-amber-500 to-orange-500 text-white'
+            }`}>
+
+            {/* Lado Izquierdo: Estado e Información principal */}
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Indicador de pulso estilizado */}
+              <div className="flex items-center gap-2 bg-black/10 px-3 py-1 rounded-full text-xs">
+                <span className={`w-2.5 h-2.5 rounded-full ${cashIsOpen ? 'bg-emerald-300 animate-pulse' : 'bg-amber-300'}`} />
+                <span className="uppercase tracking-wider font-bold text-[10px]">
+                  {cashIsOpen ? 'Activa' : 'Inactiva'}
+                </span>
+              </div>
+
+              {/* Texto de información */}
+              <span className="text-white/90 text-xs md:text-sm">
+                {cashIsOpen
+                  ? `Caja abierta desde ${new Date(cashRegister!.openedAt).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })}`
+                  : 'Caja cerrada — Abre la caja para comenzar a facturar'
+                }
+              </span>
+
+              {/* Badges de métricas rápidas (Estilo primera imagen) */}
+              {cashIsOpen && (
+                <div className="flex items-center gap-2 ml-2">
+                  <span className="bg-white/10 backdrop-blur-sm px-3 py-1 rounded-lg text-xs font-semibold border border-white/10">
+                    📄 {cashRegister!.totalInvoices} factura(s)
+                  </span>
+                  <span className="bg-white/10 backdrop-blur-sm px-3 py-1 rounded-lg text-xs font-semibold border border-white/10">
+                    💰 ${Number(cashRegister!.totalSales).toFixed(2)} en ventas
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Lado Derecho: Botón de Acción */}
+            {cashIsOpen && (
+              <button
+                onClick={() => setShowCloseCash(true)}
+                className="px-4 py-1.5 bg-white text-emerald-700 hover:bg-emerald-50 rounded-lg text-xs font-bold shadow-sm transition-all transform active:scale-95"
+              >
+                Cerrar caja
+              </button>
+            )}
           </div>
-          {cashIsOpen && (
-            <button
-              onClick={() => setShowCloseCash(true)}
-              className="ml-4 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg font-medium transition-colors"
-            >
-              Cerrar caja
-            </button>
-          )}
         </div>
       )}
 
@@ -1945,18 +2074,26 @@ export default function InvoicesPage() {
 
           {/* Payment method */}
           <div className="border-t border-gray-200 p-4 bg-gray-50 shrink-0">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Método de pago</p>
-            <div className="flex gap-2">
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2.5">
+              Método de pago
+            </p>
+            <div className="flex gap-3">
               {PAYMENT_OPTIONS.map(opt => (
                 <button
                   key={opt.code}
                   onClick={() => setFormaPago(opt.code)}
-                  className={`flex-1 py-3 rounded-xl text-sm font-semibold border-2 transition-all ${formaPago === opt.code
-                    ? 'bg-blue-600 text-white border-blue-600 shadow-md'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300 hover:text-blue-600'
-                    }`}
+                  className={`w-60 h-12 flex items-center justify-center gap-2.5 rounded-xl border font-semibold text-sm transition-all duration-200 transform active:scale-[0.98]
+                    ${formaPago === opt.code
+                      ? 'bg-gray-100 text-gray-900 border-gray-400 shadow-inner'
+                      : 'bg-white text-gray-400 border-gray-200 hover:bg-gray-50 hover:text-gray-600'
+                    }
+                  `}
                 >
-                  {opt.label}
+                  <span className={`shrink-0 transition-transform ${formaPago === opt.code ? 'scale-110' : 'opacity-80'}`}>
+                    {opt.icon}
+                  </span>
+
+                  <span>{opt.label}</span>
                 </button>
               ))}
             </div>
@@ -2051,7 +2188,7 @@ export default function InvoicesPage() {
                         {it.quantity > 1 && <span className="font-medium text-gray-700">{it.quantity}×&nbsp;</span>}
                         {it.description}
                       </span>
-                      <span className="text-gray-800 font-mono shrink-0">${net.toFixed(2)}</span>
+                      <span className="font-semibold tabular-nums">${net.toFixed(2)}</span>
                     </div>
                   )
                 })}
@@ -2062,13 +2199,13 @@ export default function InvoicesPage() {
               {totals.subtotal0 > 0 && (
                 <div className="flex justify-between text-sm text-gray-500">
                   <span>Subtotal 0%</span>
-                  <span className="font-mono">${totals.subtotal0.toFixed(2)}</span>
+                  <span className="font-medium tabular-nums">${totals.subtotal0.toFixed(2)}</span>
                 </div>
               )}
               {totals.subtotalGravado > 0 && (
                 <div className="flex justify-between text-sm text-gray-500">
                   <span>Subtotal gravado</span>
-                  <span className="font-mono">${totals.subtotalGravado.toFixed(2)}</span>
+                  <span className="font-medium tabular-nums">${totals.subtotalGravado.toFixed(2)}</span>
                 </div>
               )}
               {totals.totalDescuento > 0 && (
@@ -2087,52 +2224,62 @@ export default function InvoicesPage() {
                 ))}
             </div>
 
-            <div className="border-t-2 border-blue-100 mt-3 pt-3">
-              <div className="flex justify-between items-baseline">
-                <span className="text-base font-bold text-gray-700 uppercase tracking-wide">Total</span>
-                <span className="text-4xl font-black text-blue-600 tabular-nums">
+            <div className="bg-blue-50 rounded-xl p-4 mt-4">
+              <div className="flex justify-between items-center">
+                <span className="text-lg font-bold uppercase tracking-wide text-gray-700">
+                  Total
+                </span>
+
+                <span className="text-3xl font-black text-blue-600 tabular-nums">
                   ${totals.importeTotal.toFixed(2)}
                 </span>
               </div>
-              <p className="text-right text-xs text-gray-400 mt-0.5">
+
+              <p className="text-right text-xs text-gray-500 mt-1">
                 {items.length} {items.length === 1 ? 'producto' : 'productos'}
               </p>
             </div>
           </div>
 
           {/* Action buttons */}
-          <div className="px-5 py-4 border-t border-gray-200 space-y-2.5 shrink-0">
+          <div className="px-5 py-4 border-t border-gray-200 space-y-3 shrink-0 bg-white">
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">
-                {error}
+              <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 text-xs font-medium text-red-700 flex items-center gap-2">
+                ⚠️ {error}
               </div>
             )}
+
+            {/* Botón Principal: Emitir Factura (Verde Corporativo Unificado) */}
             <button
               onClick={() => handleSubmit(false)}
               disabled={createMutation.isPending}
-              className="w-full bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-black py-4 rounded-2xl text-lg disabled:opacity-50 transition-colors shadow-lg shadow-green-200"
+              className="w-full bg-green-700 hover:bg-green-800 active:bg-green-900 text-white font-extrabold py-4 rounded-xl text-base tracking-wider uppercase disabled:opacity-50 transition-all shadow-md shadow-green-700/10 transform active:scale-[0.99]"
             >
               {createMutation.isPending ? 'Procesando…' : 'EMITIR FACTURA'}
             </button>
+
+            {/* Botón Secundario: Guardar Borrador */}
             <button
               onClick={() => handleSubmit(true)}
               disabled={createMutation.isPending}
-              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-medium py-2.5 rounded-xl text-sm disabled:opacity-50 transition-colors"
+              className="w-full bg-gray-50 hover:bg-gray-100 text-gray-700 font-semibold py-3 rounded-xl text-sm disabled:opacity-50 transition-all border border-gray-200/60 shadow-sm"
             >
               Guardar borrador
             </button>
-            <div className="flex gap-2">
+
+            {/* Acciones Inferiores (Sin bordes azules) */}
+            <div className="flex gap-2.5 pt-1">
               <button
                 onClick={() => setShowHistorial(true)}
-                className="flex-1 border-2 border-blue-200 text-blue-600 font-medium py-2.5 rounded-xl text-sm hover:bg-blue-50 transition-colors"
+                className="flex-1 border border-gray-300 text-gray-700 font-semibold py-3 rounded-xl text-sm bg-white hover:bg-gray-50 active:bg-gray-100 transition-all shadow-sm flex items-center justify-center gap-1.5"
               >
-                Ver facturas
+                📋 Ver facturas
               </button>
               <button
                 onClick={() => setShowDrafts(true)}
-                className="flex-1 border-2 border-gray-200 text-gray-600 font-medium py-2.5 rounded-xl text-sm hover:bg-gray-50 transition-colors"
+                className="flex-1 border border-gray-300 text-gray-700 font-semibold py-3 rounded-xl text-sm bg-white hover:bg-gray-50 active:bg-gray-100 transition-all shadow-sm flex items-center justify-center gap-1.5"
               >
-                Borradores
+                📂 Borradores
               </button>
             </div>
           </div>
